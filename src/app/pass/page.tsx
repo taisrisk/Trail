@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Badge, GlassCard, SectionTitle, TerminalBlock } from "@/components/ui/primitives";
 import { PassDashboard } from "@/components/pass-dashboard";
 import { passArchitecture, passSecurityRules } from "@/lib/erme-ecosystem";
+import { listDevices, listSafeItems, passSummary, readPassState } from "@/lib/server/pass-store";
 
 const apps = [
   { name: "Chrome extension", detail: "Autofill, save-login prompts, password generator, passkey mediation where supported, and local node bridge." },
@@ -18,7 +19,10 @@ export const metadata = {
   description: "Private password manager and passkey-compatible vault for iOS, PC, and Chrome extension ecosystems.",
 };
 
-export default function PassPage() {
+export default async function PassPage() {
+  const [state, initialItems, initialDevices] = await Promise.all([readPassState(), listSafeItems(), listDevices()]);
+  const initialStatus = passSummary(state);
+
   return (
     <main className="relative overflow-hidden px-5 py-6 md:px-8">
       <div className="orb left-8 top-24 h-48 w-48 bg-violet-400/15" />
@@ -59,7 +63,7 @@ export default function PassPage() {
         </GlassCard>
       </section>
 
-      <PassDashboard />
+      <PassDashboard initialStatus={initialStatus} initialItems={initialItems} initialDevices={initialDevices} />
 
       <section className="mx-auto max-w-7xl py-12">
         <SectionTitle eyebrow="Vault scope" title="It should be a whole ecosystem, not a tiny password list." body="Start with normal passwords, but design the vault around everything people lose access to: passkeys, notes, cards, identities, tokens, and recovery codes." />

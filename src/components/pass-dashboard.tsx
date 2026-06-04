@@ -33,10 +33,18 @@ type Device = { id: string; name: string; kind: string; trusted: boolean; create
 
 const kinds = ["login", "passkey", "secure-note", "card", "identity", "recovery-code", "api-secret", "ssh-key"];
 
-export function PassDashboard() {
-  const [status, setStatus] = useState<Status | null>(null);
-  const [items, setItems] = useState<SafeItem[]>([]);
-  const [devices, setDevices] = useState<Device[]>([]);
+export function PassDashboard({
+  initialStatus = null,
+  initialItems = [],
+  initialDevices = [],
+}: {
+  initialStatus?: Status | null;
+  initialItems?: SafeItem[];
+  initialDevices?: Device[];
+}) {
+  const [status, setStatus] = useState<Status | null>(initialStatus);
+  const [items, setItems] = useState<SafeItem[]>(initialItems);
+  const [devices, setDevices] = useState<Device[]>(initialDevices);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ kind: "login", title: "", username: "", origin: "", tags: "" });

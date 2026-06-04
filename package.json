@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "trail:node": "node scripts/trail-local-server.mjs",
+    "trail:health": "node -e \"fetch('http://127.0.0.1:8787/health').then(r=>r.json()).then(console.log).catch(err=>{console.error(err.message); process.exit(1)})\""
   },
   "dependencies": {
     "next": "16.2.7",

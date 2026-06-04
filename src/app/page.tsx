@@ -253,7 +253,8 @@ export default function Home() {
           <h1 className="max-w-4xl text-5xl font-semibold leading-[0.95] tracking-[-0.06em] text-white md:text-7xl">Your domain becomes a local-first AI email OS.</h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">Trail lets users own `you@yourdomain.com`, route mail through replaceable pipes, and keep the real inbox, vault, search, knowledge graph, and AI watchers on their own PC.</p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <a href="#modes" className="rounded-full bg-cyan-200 px-6 py-3 font-semibold text-slate-950 shadow-[0_0_40px_rgba(94,234,212,.25)]">Explore mail modes</a>
+            <a href="/dashboard" className="rounded-full bg-cyan-200 px-6 py-3 font-semibold text-slate-950 shadow-[0_0_40px_rgba(94,234,212,.25)]">Open control dashboard</a>
+            <a href="#modes" className="rounded-full border border-cyan-300/25 px-6 py-3 font-semibold text-cyan-100 hover:bg-cyan-300/10">Explore mail modes</a>
             <a href="#roadmap" className="rounded-full border border-white/15 px-6 py-3 font-semibold text-white hover:bg-white/10">GitHub roadmap</a>
           </div>
           <div className="mt-10 grid grid-cols-2 gap-3 md:grid-cols-4">

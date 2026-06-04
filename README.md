@@ -323,7 +323,7 @@ Install dependencies:
 npm install
 ```
 
-Run the dev server:
+Run the app dev server:
 
 ```bash
 npm run dev
@@ -333,6 +333,29 @@ Open:
 
 ```text
 http://localhost:3000
+```
+
+Open the functional control plane:
+
+```text
+http://localhost:3000/dashboard
+```
+
+The dashboard can now create/update a local domain setup, aliases, watchers, and test inbound mail. Data persists in the local Trail home folder, defaulting to `~/.trail`.
+
+Run the optional standalone local node server:
+
+```bash
+npm run trail:node
+```
+
+Standalone server endpoints:
+
+```text
+GET  http://127.0.0.1:8787/health
+GET  http://127.0.0.1:8787/state
+POST http://127.0.0.1:8787/domain
+POST http://127.0.0.1:8787/alias
 ```
 
 Lint:

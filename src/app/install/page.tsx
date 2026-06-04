@@ -2,121 +2,18 @@ import Link from "next/link";
 
 import { CopyScriptButton } from "@/components/copy-script-button";
 import { Badge, GlassCard, SectionTitle } from "@/components/ui/primitives";
-
-const windowsCmd = String.raw`@echo off
-setlocal EnableExtensions EnableDelayedExpansion
-set "TRAIL_REPO=https://github.com/ZroRisc/Trail.git"
-set "TRAIL_DIR=%USERPROFILE%\Trail"
-set "TRAIL_HOME=%USERPROFILE%\.trail"
-
-echo.
-echo === Trail one-click Windows setup ===
-echo This installs Git/Node if missing, clones Trail, prepares ~/.trail, and starts the local app.
-echo.
-
-where git >nul 2>nul
-if errorlevel 1 (
-  echo Git not found. Installing Git with winget...
-  winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements
-) else (
-  echo Git found.
-)
-
-where node >nul 2>nul
-if errorlevel 1 (
-  echo Node.js not found. Installing Node.js LTS with winget...
-  winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-package-agreements --accept-source-agreements
-) else (
-  echo Node.js found.
-)
-
-where git >nul 2>nul || (echo Git install did not finish. Open a new CMD and run this script again. & pause & exit /b 1)
-where node >nul 2>nul || (echo Node install did not finish. Open a new CMD and run this script again. & pause & exit /b 1)
-
-if not exist "%TRAIL_HOME%" mkdir "%TRAIL_HOME%"
-if not exist "%TRAIL_HOME%\config" mkdir "%TRAIL_HOME%\config"
-if not exist "%TRAIL_HOME%\keys" mkdir "%TRAIL_HOME%\keys"
-if not exist "%TRAIL_HOME%\vault" mkdir "%TRAIL_HOME%\vault"
-if not exist "%TRAIL_HOME%\mail" mkdir "%TRAIL_HOME%\mail"
-if not exist "%TRAIL_HOME%\attachments" mkdir "%TRAIL_HOME%\attachments"
-if not exist "%TRAIL_HOME%\index" mkdir "%TRAIL_HOME%\index"
-if not exist "%TRAIL_HOME%\graph" mkdir "%TRAIL_HOME%\graph"
-if not exist "%TRAIL_HOME%\watchers" mkdir "%TRAIL_HOME%\watchers"
-if not exist "%TRAIL_HOME%\queues" mkdir "%TRAIL_HOME%\queues"
-if not exist "%TRAIL_HOME%\backups" mkdir "%TRAIL_HOME%\backups"
-
-if exist "%TRAIL_DIR%\.git" (
-  echo Updating existing Trail checkout...
-  cd /d "%TRAIL_DIR%" || exit /b 1
-  git pull --ff-only
-) else (
-  if exist "%TRAIL_DIR%" ren "%TRAIL_DIR%" "Trail-backup-%RANDOM%"
-  git clone "%TRAIL_REPO%" "%TRAIL_DIR%"
-  cd /d "%TRAIL_DIR%" || exit /b 1
-)
-
-call npm install
-if errorlevel 1 exit /b 1
-
-call npm run build
-if errorlevel 1 exit /b 1
-
-echo.
-echo Trail is installed.
-echo App: http://localhost:3000
-echo Setup dashboard: http://localhost:3000/dashboard
-echo Local node home: %TRAIL_HOME%
-echo.
-echo Starting Trail now...
-start "Trail Local Node" cmd /k "cd /d %TRAIL_DIR% && npm run trail:node"
-start "Trail Web" cmd /k "cd /d %TRAIL_DIR% && npm run dev"
-start "" "http://localhost:3000/install"
-endlocal`;
-
-const macLinux = String.raw`#!/usr/bin/env bash
-set -euo pipefail
-TRAIL_REPO="https://github.com/ZroRisc/Trail.git"
-TRAIL_DIR="$HOME/Trail"
-TRAIL_HOME="$HOME/.trail"
-
-command -v git >/dev/null || { echo "Install git first."; exit 1; }
-command -v node >/dev/null || { echo "Install Node.js LTS first."; exit 1; }
-
-mkdir -p "$TRAIL_HOME"/{config,keys,vault,mail,attachments,index,graph,watchers,queues,backups}
-
-if [ -d "$TRAIL_DIR/.git" ]; then
-  cd "$TRAIL_DIR"
-  git pull --ff-only
-else
-  [ -e "$TRAIL_DIR" ] && mv "$TRAIL_DIR" "$TRAIL_DIR-backup-$(date +%s)"
-  git clone "$TRAIL_REPO" "$TRAIL_DIR"
-  cd "$TRAIL_DIR"
-fi
-
-npm install
-npm run build
-
-printf '\nTrail installed.\nApp: http://localhost:3000\nDashboard: http://localhost:3000/dashboard\n\n'
-(npm run trail:node &)
-npm run dev`;
-
-const quickStart = String.raw`cd %USERPROFILE%\Trail
-npm run dev
-
-:: in another CMD window:
-cd %USERPROFILE%\Trail
-npm run trail:node`;
+import { macLinux, oneLineWindows, quickStart, windowsCmd } from "@/lib/install-scripts";
 
 const setupSteps = [
-  "Copy the Windows CMD script.",
-  "Open Command Prompt, paste it, and press Enter.",
+  "Fastest: copy the one-line CMD command and paste it into Command Prompt.",
+  "Alternative: download trail-install.cmd and double-click/run it.",
   "The script installs Git/Node when needed, clones Trail, creates ~/.trail, installs packages, builds, and launches the app.",
   "Open the dashboard, choose Quick Domain / Relay Node / Sovereign MX, then create aliases and watchers.",
 ];
 
 const createdFolders = ["config", "keys", "vault", "mail", "attachments", "index", "graph", "watchers", "queues", "backups"];
 
-function ScriptPanel({ title, subtitle, script, label }: { title: string; subtitle: string; script: string; label: string }) {
+function ScriptPanel({ title, subtitle, script, label, downloadHref, downloadLabel }: { title: string; subtitle: string; script: string; label: string; downloadHref?: string; downloadLabel?: string }) {
   return (
     <GlassCard className="overflow-hidden p-0">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 bg-white/[0.035] p-5">
@@ -124,7 +21,14 @@ function ScriptPanel({ title, subtitle, script, label }: { title: string; subtit
           <p className="text-xs uppercase tracking-[0.3em] text-cyan-200">{subtitle}</p>
           <h2 className="mt-2 text-2xl font-semibold text-white">{title}</h2>
         </div>
-        <CopyScriptButton script={script} label={label} />
+        <div className="flex flex-wrap gap-2">
+          {downloadHref ? (
+            <a href={downloadHref} className="rounded-full border border-cyan-300/25 px-5 py-2.5 text-sm font-semibold text-cyan-100 hover:bg-cyan-300/10">
+              {downloadLabel ?? "Download"}
+            </a>
+          ) : null}
+          <CopyScriptButton script={script} label={label} />
+        </div>
       </div>
       <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap bg-[#030806]/90 p-5 font-mono text-xs leading-6 text-emerald-100">
         {script}
@@ -164,8 +68,9 @@ export default function InstallPage() {
           <h1 className="max-w-4xl text-5xl font-semibold leading-[0.95] tracking-[-0.06em] text-white md:text-7xl">Install the local email OS in one shot.</h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">This page gives users a copyable setup script that installs prerequisites, clones Trail, creates the local node folders, builds the app, and opens the dashboard.</p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <a href="#windows" className="rounded-full bg-cyan-200 px-6 py-3 font-semibold text-slate-950 shadow-[0_0_40px_rgba(94,234,212,.25)]">Get Windows script</a>
-            <a href="#restart" className="rounded-full border border-cyan-300/25 px-6 py-3 font-semibold text-cyan-100 hover:bg-cyan-300/10">Restart commands</a>
+            <a href="#one-line" className="rounded-full bg-cyan-200 px-6 py-3 font-semibold text-slate-950 shadow-[0_0_40px_rgba(94,234,212,.25)]">Copy one-line CMD</a>
+            <a href="/install/trail-install.cmd" className="rounded-full border border-cyan-300/25 px-6 py-3 font-semibold text-cyan-100 hover:bg-cyan-300/10">Download .cmd</a>
+            <a href="#windows" className="rounded-full border border-cyan-300/25 px-6 py-3 font-semibold text-cyan-100 hover:bg-cyan-300/10">Full script</a>
             <a href="/dashboard" className="rounded-full border border-white/15 px-6 py-3 font-semibold text-white hover:bg-white/10">Open dashboard</a>
           </div>
         </div>
@@ -195,8 +100,22 @@ export default function InstallPage() {
         </GlassCard>
       </section>
 
+      <section id="one-line" className="mx-auto max-w-7xl py-8">
+        <GlassCard className="overflow-hidden p-0">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 bg-cyan-300/10 p-5">
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-cyan-200">fastest Windows path</p>
+              <h2 className="mt-2 text-2xl font-semibold text-white">One line to paste into CMD</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">For a hosted site, replace localhost with the real Trail domain. This command downloads the .cmd installer, saves it to Temp, and runs it.</p>
+            </div>
+            <CopyScriptButton script={oneLineWindows} label="Copy one-line command" />
+          </div>
+          <pre className="overflow-auto whitespace-pre-wrap bg-[#030806]/90 p-5 font-mono text-sm leading-7 text-emerald-100">{oneLineWindows}</pre>
+        </GlassCard>
+      </section>
+
       <section id="windows" className="mx-auto max-w-7xl py-8">
-        <ScriptPanel title="Windows CMD installer" subtitle="recommended" script={windowsCmd} label="Copy Windows CMD script" />
+        <ScriptPanel title="Windows CMD installer" subtitle="recommended" script={windowsCmd} label="Copy Windows CMD script" downloadHref="/install/trail-install.cmd" downloadLabel="Download .cmd" />
       </section>
 
       <section id="restart" className="mx-auto max-w-7xl py-8">
@@ -204,7 +123,7 @@ export default function InstallPage() {
       </section>
 
       <section className="mx-auto max-w-7xl py-8">
-        <ScriptPanel title="macOS / Linux installer" subtitle="optional" script={macLinux} label="Copy shell script" />
+        <ScriptPanel title="macOS / Linux installer" subtitle="optional" script={macLinux} label="Copy shell script" downloadHref="/install/trail-install.sh" downloadLabel="Download .sh" />
       </section>
 
       <section className="mx-auto max-w-7xl pb-20 pt-8">
@@ -222,3 +141,4 @@ export default function InstallPage() {
     </main>
   );
 }
+

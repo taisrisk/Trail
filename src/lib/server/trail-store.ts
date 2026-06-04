@@ -6,6 +6,9 @@ import crypto from "crypto";
 
 export type NodeMode = "quick-domain" | "relay-node" | "sovereign-mx";
 export type NodeRunState = "fresh" | "running" | "paused";
+export type MailStatus = "inbox" | "flagged" | "archived" | "drafted";
+export type MailFolder = "inbox" | "priority" | "orders" | "finance" | "sent" | "archive";
+export type ActionStatus = "queued" | "approved" | "done" | "dismissed";
 
 export interface DomainConfig {
   domain: string;
@@ -35,13 +38,76 @@ export interface WatcherRecord {
 
 export interface MailRecord {
   id: string;
+  threadId: string;
   from: string;
   to: string;
   subject: string;
+  body: string;
   bodyPreview: string;
   tags: string[];
-  status: "inbox" | "flagged" | "archived" | "drafted";
+  status: MailStatus;
+  folder: MailFolder;
+  unread: boolean;
+  starred: boolean;
+  importance: "low" | "normal" | "high";
+  watcherMatches: string[];
   receivedAt: string;
+}
+
+export interface DraftRecord {
+  id: string;
+  threadId?: string;
+  to: string;
+  subject: string;
+  body: string;
+  sourceMailId?: string;
+  status: "draft" | "queued" | "sent";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContactRecord {
+  id: string;
+  email: string;
+  name: string;
+  company?: string;
+  lastSeenAt: string;
+  messageCount: number;
+  tags: string[];
+}
+
+export interface QueueAction {
+  id: string;
+  type: "draft_reply" | "flag" | "order_update" | "calendar_extract" | "label";
+  status: ActionStatus;
+  mailId?: string;
+  draftId?: string;
+  title: string;
+  detail: string;
+  createdAt: string;
+  resolvedAt?: string;
+}
+
+export interface GraphNode {
+  id: string;
+  type: "contact" | "domain" | "alias" | "thread" | "tag";
+  label: string;
+  weight: number;
+}
+
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  label: string;
+  weight: number;
+}
+
+export interface TrailSettings {
+  localAiModel: string;
+  approvalRequired: boolean;
+  retentionDays: number;
+  encryption: "local-dev" | "user-key";
 }
 
 export interface TrailEvent {
@@ -52,7 +118,7 @@ export interface TrailEvent {
 }
 
 export interface TrailState {
-  version: 1;
+  version: 2;
   nodeId: string;
   runState: NodeRunState;
   home: string;
@@ -60,6 +126,11 @@ export interface TrailState {
   aliases: AliasRecord[];
   watchers: WatcherRecord[];
   mail: MailRecord[];
+  drafts: DraftRecord[];
+  contacts: ContactRecord[];
+  actions: QueueAction[];
+  graph: { nodes: GraphNode[]; edges: GraphEdge[] };
+  settings: TrailSettings;
   events: TrailEvent[];
   createdAt: string;
   updatedAt: string;
@@ -67,14 +138,13 @@ export interface TrailState {
 
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
+const folders = ["config", "keys", "vault", "mail", "attachments", "index", "graph", "watchers", "calendar", "orders", "queues", "backups", "logs", "drafts", "contacts"];
 
 export function getTrailHome() {
   const configured = process.env.TRAIL_HOME?.trim();
   if (configured) return configured.replace(/^~(?=$|[\\/])/, os.homedir());
   return path.join(os.homedir(), ".trail");
 }
-
-const folders = ["config", "keys", "vault", "mail", "attachments", "index", "graph", "watchers", "calendar", "orders", "queues", "backups", "logs"];
 
 async function ensureHome(home = getTrailHome()) {
   await mkdir(home, { recursive: true });
@@ -86,25 +156,99 @@ function dbPath(home = getTrailHome()) {
 }
 
 function redactBody(body: string) {
-  const trimmed = body.replace(/\s+/g, " ").trim();
+  const trimmed = String(body || "").replace(/\s+/g, " ").trim();
   if (!trimmed) return "No body preview.";
-  return trimmed.length > 180 ? `${trimmed.slice(0, 180)}…` : trimmed;
+  return trimmed.length > 220 ? `${trimmed.slice(0, 220)}…` : trimmed;
+}
+
+function defaultSettings(): TrailSettings {
+  return { localAiModel: "local-rule-engine", approvalRequired: true, retentionDays: 3650, encryption: "local-dev" };
 }
 
 function defaultState(home = getTrailHome()): TrailState {
   const at = now();
   return {
-    version: 1,
+    version: 2,
     nodeId: id("node"),
     runState: "fresh",
     home,
     aliases: [],
     watchers: [],
     mail: [],
+    drafts: [],
+    contacts: [],
+    actions: [],
+    graph: { nodes: [], edges: [] },
+    settings: defaultSettings(),
     events: [{ id: id("evt"), type: "node.created", message: "Trail local node state created.", at }],
     createdAt: at,
     updatedAt: at,
   };
+}
+
+function normalizeState(parsed: Partial<TrailState> & { version?: number }, home: string): TrailState {
+  const state = { ...defaultState(home), ...parsed, home } as TrailState;
+  state.version = 2;
+  state.aliases ||= [];
+  state.watchers ||= [];
+  state.mail = (state.mail || []).map((mail) => normalizeMail(mail as Partial<MailRecord>));
+  state.drafts ||= [];
+  state.contacts ||= [];
+  state.actions ||= [];
+  state.graph ||= { nodes: [], edges: [] };
+  state.graph.nodes ||= [];
+  state.graph.edges ||= [];
+  state.settings = { ...defaultSettings(), ...(state.settings || {}) };
+  state.events ||= [];
+  return state;
+}
+
+function normalizeMail(mail: Partial<MailRecord>): MailRecord {
+  const body = mail.body || mail.bodyPreview || "";
+  const subject = mail.subject?.trim() || "(no subject)";
+  return {
+    id: mail.id || id("mail"),
+    threadId: mail.threadId || threadIdFor(subject, mail.from || ""),
+    from: mail.from || "unknown@example.com",
+    to: mail.to || "inbox@yourdomain.com",
+    subject,
+    body,
+    bodyPreview: mail.bodyPreview || redactBody(body),
+    tags: mail.tags || [],
+    status: mail.status || "inbox",
+    folder: mail.folder || folderFor(subject, body, mail.tags || []),
+    unread: mail.unread ?? true,
+    starred: mail.starred ?? false,
+    importance: mail.importance || inferImportance(subject, body),
+    watcherMatches: mail.watcherMatches || [],
+    receivedAt: mail.receivedAt || now(),
+  };
+}
+
+function threadIdFor(subject: string, from = "") {
+  const cleaned = subject.toLowerCase().replace(/^(re|fwd):\s*/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "thread";
+  const domain = from.split("@")[1]?.replace(/[^a-z0-9]+/g, "-") || "local";
+  return `thread_${cleaned}_${domain}`;
+}
+
+function inferImportance(subject: string, body: string): "low" | "normal" | "high" {
+  const text = `${subject} ${body}`.toLowerCase();
+  if (/urgent|overdue|failed|refund|security|invoice|payment|deadline|delayed/.test(text)) return "high";
+  if (/newsletter|receipt|digest/.test(text)) return "low";
+  return "normal";
+}
+
+function folderFor(subject: string, body: string, tags: string[] = []): MailFolder {
+  const text = `${subject} ${body} ${tags.join(" ")}`.toLowerCase();
+  if (/order|package|delivery|receipt|refund|shipping/.test(text)) return "orders";
+  if (/invoice|payment|bank|subscription|tax/.test(text)) return "finance";
+  if (/urgent|security|deadline|delayed|important/.test(text)) return "priority";
+  return "inbox";
+}
+
+function displayName(email: string) {
+  const local = email.split("@")[0] || email;
+  return local.replace(/[._-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 export async function readTrailState(): Promise<TrailState> {
@@ -117,21 +261,98 @@ export async function readTrailState(): Promise<TrailState> {
     return state;
   }
   const raw = await readFile(file, "utf8");
-  const parsed = JSON.parse(raw) as TrailState;
-  return { ...parsed, home };
+  return normalizeState(JSON.parse(raw), home);
 }
 
 export async function writeTrailState(state: TrailState) {
   const home = getTrailHome();
   await ensureHome(home);
-  const next = { ...state, home, updatedAt: now() };
+  const next = normalizeState({ ...state, updatedAt: now() }, home);
   await writeFile(dbPath(home), JSON.stringify(next, null, 2), "utf8");
   return next;
 }
 
 export async function appendEvent(state: TrailState, type: string, message: string) {
   state.events.unshift({ id: id("evt"), type, message, at: now() });
-  state.events = state.events.slice(0, 80);
+  state.events = state.events.slice(0, 160);
+}
+
+function upsertContact(state: TrailState, email: string, tags: string[] = []) {
+  const normalized = email.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) return;
+  const existing = state.contacts.find((contact) => contact.email === normalized);
+  if (existing) {
+    existing.messageCount += 1;
+    existing.lastSeenAt = now();
+    existing.tags = Array.from(new Set([...existing.tags, ...tags]));
+  } else {
+    state.contacts.unshift({ id: id("contact"), email: normalized, name: displayName(normalized), company: normalized.split("@")[1], lastSeenAt: now(), messageCount: 1, tags });
+  }
+}
+
+function upsertGraphNode(state: TrailState, type: GraphNode["type"], label: string, weight = 1) {
+  const key = `${type}:${label.toLowerCase()}`;
+  const existing = state.graph.nodes.find((node) => node.id === key);
+  if (existing) existing.weight += weight;
+  else state.graph.nodes.push({ id: key, type, label, weight });
+  return key;
+}
+
+function upsertGraphEdge(state: TrailState, source: string, target: string, label: string) {
+  if (source === target) return;
+  const key = `${source}->${target}:${label}`;
+  const existing = state.graph.edges.find((edge) => edge.id === key);
+  if (existing) existing.weight += 1;
+  else state.graph.edges.push({ id: key, source, target, label, weight: 1 });
+}
+
+function indexMail(state: TrailState, mail: MailRecord) {
+  upsertContact(state, mail.from, mail.tags);
+  upsertContact(state, mail.to, ["alias"]);
+  const fromNode = upsertGraphNode(state, "contact", mail.from);
+  const toNode = upsertGraphNode(state, "alias", mail.to);
+  const threadNode = upsertGraphNode(state, "thread", mail.subject);
+  const domain = mail.from.split("@")[1];
+  if (domain) {
+    const domainNode = upsertGraphNode(state, "domain", domain);
+    upsertGraphEdge(state, domainNode, fromNode, "owns");
+  }
+  upsertGraphEdge(state, fromNode, threadNode, "sent");
+  upsertGraphEdge(state, threadNode, toNode, "delivered_to");
+  mail.tags.forEach((tag) => upsertGraphEdge(state, threadNode, upsertGraphNode(state, "tag", tag), "tagged"));
+}
+
+function evaluateWatchers(state: TrailState, mail: MailRecord) {
+  const text = `${mail.subject}\n${mail.body}\n${mail.tags.join(" ")}`.toLowerCase();
+  for (const watcher of state.watchers.filter((item) => item.active)) {
+    const terms = watcher.rule.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length > 4);
+    const matched = terms.some((term) => text.includes(term)) || watcher.actions.some((action) => text.includes(action.replace(/_/g, " ")));
+    if (!matched) continue;
+    mail.watcherMatches.push(watcher.id);
+    if (watcher.actions.includes("flag")) mail.status = "flagged";
+    if (watcher.actions.includes("draft_reply")) {
+      const draft = makeReplyDraft(mail);
+      state.drafts.unshift(draft);
+      state.actions.unshift({ id: id("act"), type: "draft_reply", status: watcher.humanApprovalRequired ? "queued" : "approved", mailId: mail.id, draftId: draft.id, title: `Draft reply for ${mail.subject}`, detail: `Generated by ${watcher.name}.`, createdAt: now() });
+    }
+    if (watcher.actions.includes("order_update")) {
+      state.actions.unshift({ id: id("act"), type: "order_update", status: "queued", mailId: mail.id, title: `Review order update`, detail: mail.bodyPreview, createdAt: now() });
+    }
+  }
+}
+
+function makeReplyDraft(mail: MailRecord): DraftRecord {
+  return {
+    id: id("draft"),
+    threadId: mail.threadId,
+    to: mail.from,
+    subject: mail.subject.toLowerCase().startsWith("re:") ? mail.subject : `Re: ${mail.subject}`,
+    body: `Thanks for the update. I saw this and will follow up shortly.\n\n— Sent from Trail local draft assistant`,
+    sourceMailId: mail.id,
+    status: "draft",
+    createdAt: now(),
+    updatedAt: now(),
+  };
 }
 
 export async function setupDomain(input: { domain: string; mode: NodeMode; catchAll?: boolean }) {
@@ -157,15 +378,9 @@ export async function createAlias(input: { address: string; destination: string;
   let address = input.address.trim().toLowerCase();
   if (domain && !address.includes("@")) address = `${address}@${domain}`;
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) throw new Error("Alias must be a valid email address.");
-  const alias: AliasRecord = {
-    id: id("alias"),
-    address,
-    destination: input.destination.trim() || "local-vault",
-    label: input.label?.trim() || "General",
-    active: true,
-    createdAt: now(),
-  };
+  const alias: AliasRecord = { id: id("alias"), address, destination: input.destination.trim() || "local-vault", label: input.label?.trim() || "General", active: true, createdAt: now() };
   state.aliases.unshift(alias);
+  upsertGraphNode(state, "alias", alias.address);
   await appendEvent(state, "alias.created", `Alias ${alias.address} routes to ${alias.destination}.`);
   return writeTrailState(state);
 }
@@ -173,15 +388,7 @@ export async function createAlias(input: { address: string; destination: string;
 export async function createWatcher(input: { name: string; rule: string; actions?: string[]; humanApprovalRequired?: boolean }) {
   const state = await readTrailState();
   if (!input.name.trim() || !input.rule.trim()) throw new Error("Watcher name and rule are required.");
-  const watcher: WatcherRecord = {
-    id: id("watcher"),
-    name: input.name.trim(),
-    rule: input.rule.trim(),
-    actions: input.actions?.length ? input.actions : ["scan", "flag", "draft_reply"],
-    humanApprovalRequired: input.humanApprovalRequired ?? true,
-    active: true,
-    createdAt: now(),
-  };
+  const watcher: WatcherRecord = { id: id("watcher"), name: input.name.trim(), rule: input.rule.trim(), actions: input.actions?.length ? input.actions : ["scan", "flag", "draft_reply"], humanApprovalRequired: input.humanApprovalRequired ?? true, active: true, createdAt: now() };
   state.watchers.unshift(watcher);
   await appendEvent(state, "watcher.created", `Watcher ${watcher.name} added with local approval gate.`);
   return writeTrailState(state);
@@ -189,30 +396,87 @@ export async function createWatcher(input: { name: string; rule: string; actions
 
 export async function createMail(input: { from: string; to: string; subject: string; body: string; tags?: string[] }) {
   const state = await readTrailState();
-  const mail: MailRecord = {
-    id: id("mail"),
-    from: input.from.trim(),
-    to: input.to.trim(),
-    subject: input.subject.trim() || "(no subject)",
-    bodyPreview: redactBody(input.body),
-    tags: input.tags?.length ? input.tags : ["local-import"],
-    status: "inbox",
-    receivedAt: now(),
-  };
+  const mail = normalizeMail({ from: input.from.trim(), to: input.to.trim(), subject: input.subject.trim() || "(no subject)", body: input.body, tags: input.tags?.length ? input.tags : ["local-import"], status: "inbox", unread: true });
+  evaluateWatchers(state, mail);
   state.mail.unshift(mail);
-  await appendEvent(state, "mail.imported", `Imported local test message: ${mail.subject}.`);
+  indexMail(state, mail);
+  await appendEvent(state, "mail.imported", `Imported message into ${mail.folder}: ${mail.subject}.`);
+  return writeTrailState(state);
+}
+
+export async function createDraft(input: { to: string; subject: string; body: string; sourceMailId?: string }) {
+  const state = await readTrailState();
+  const source = input.sourceMailId ? state.mail.find((mail) => mail.id === input.sourceMailId) : undefined;
+  const draft: DraftRecord = { id: id("draft"), threadId: source?.threadId, to: input.to.trim(), subject: input.subject.trim() || "(no subject)", body: input.body.trim(), sourceMailId: source?.id, status: "draft", createdAt: now(), updatedAt: now() };
+  state.drafts.unshift(draft);
+  if (source) source.status = "drafted";
+  await appendEvent(state, "draft.created", `Draft created for ${draft.to}.`);
+  return writeTrailState(state);
+}
+
+export async function updateMail(input: { id: string; status?: MailStatus; folder?: MailFolder; unread?: boolean; starred?: boolean }) {
+  const state = await readTrailState();
+  const mail = state.mail.find((item) => item.id === input.id);
+  if (!mail) throw new Error("Mail not found.");
+  if (input.status) mail.status = input.status;
+  if (input.folder) mail.folder = input.folder;
+  if (typeof input.unread === "boolean") mail.unread = input.unread;
+  if (typeof input.starred === "boolean") mail.starred = input.starred;
+  await appendEvent(state, "mail.updated", `${mail.subject} updated.`);
+  return writeTrailState(state);
+}
+
+export async function resolveAction(input: { id: string; status: ActionStatus }) {
+  const state = await readTrailState();
+  const action = state.actions.find((item) => item.id === input.id);
+  if (!action) throw new Error("Action not found.");
+  action.status = input.status;
+  action.resolvedAt = now();
+  if (action.draftId && input.status === "approved") {
+    const draft = state.drafts.find((item) => item.id === action.draftId);
+    if (draft) draft.status = "queued";
+  }
+  await appendEvent(state, "action.resolved", `${action.title} marked ${input.status}.`);
+  return writeTrailState(state);
+}
+
+export function searchTrailState(state: TrailState, query = "") {
+  const q = query.trim().toLowerCase();
+  if (!q) return { mail: state.mail.slice(0, 20), drafts: state.drafts.slice(0, 10), contacts: state.contacts.slice(0, 20), actions: state.actions.slice(0, 20) };
+  const includes = (...values: string[]) => values.join(" ").toLowerCase().includes(q);
+  return {
+    mail: state.mail.filter((mail) => includes(mail.from, mail.to, mail.subject, mail.body, mail.tags.join(" "))).slice(0, 30),
+    drafts: state.drafts.filter((draft) => includes(draft.to, draft.subject, draft.body)).slice(0, 20),
+    contacts: state.contacts.filter((contact) => includes(contact.email, contact.name, contact.company || "", contact.tags.join(" "))).slice(0, 30),
+    actions: state.actions.filter((action) => includes(action.title, action.detail, action.type, action.status)).slice(0, 30),
+  };
+}
+
+export async function seedPlatformData() {
+  let state = await readTrailState();
+  if (!state.domain) state = await setupDomain({ domain: "yourdomain.com", mode: "quick-domain", catchAll: true });
+  if (!state.aliases.length) state = await createAlias({ address: "inbox", destination: "local-vault", label: "Main inbox" });
+  if (!state.watchers.length) {
+    state = await createWatcher({ name: "Order watcher", rule: "Track receipts, shipping changes, refunds, delivery delays, and package updates.", actions: ["scan", "order_update", "flag", "draft_reply"], humanApprovalRequired: true });
+    state = await createWatcher({ name: "Finance guard", rule: "Flag invoices, payment failures, tax notices, renewals, and subscription charges.", actions: ["scan", "flag", "label"], humanApprovalRequired: false });
+  }
+  state = await readTrailState();
+  const samples = [
+    { from: "orders@shop.example", to: state.aliases[0]?.address || "inbox@yourdomain.com", subject: "Your package is delayed", body: "Delivery moved by two days. Trail should update the local order timeline and flag if it changes again.", tags: ["order", "delivery"] },
+    { from: "billing@vercel.example", to: state.aliases[0]?.address || "inbox@yourdomain.com", subject: "Invoice paid for Trail deployment", body: "Your monthly invoice has been paid. Download invoice PDF from your dashboard.", tags: ["finance", "invoice"] },
+    { from: "security@cloudflare.example", to: state.aliases[0]?.address || "inbox@yourdomain.com", subject: "Security alert: DNS record changed", body: "A DNS record was changed for your domain. Review SPF, DKIM, DMARC, and routing settings.", tags: ["security", "domain"] },
+  ];
+  for (const sample of samples) {
+    const exists = state.mail.some((mail) => mail.subject === sample.subject && mail.from === sample.from);
+    if (!exists) state = await createMail(sample);
+  }
+  state = await readTrailState();
+  await appendEvent(state, "platform.seeded", "Platform inbox, graph, contacts, drafts, and action queue seeded.");
   return writeTrailState(state);
 }
 
 export async function seedDemoData() {
-  let state = await readTrailState();
-  if (!state.domain) state = await setupDomain({ domain: "yourdomain.com", mode: "quick-domain", catchAll: true });
-  if (!state.aliases.length) state = await createAlias({ address: "inbox", destination: "local-vault", label: "Main inbox" });
-  if (!state.watchers.length) state = await createWatcher({ name: "Order watcher", rule: "Track receipts, shipping changes, refunds, and delivery dates.", actions: ["scan", "order_update", "flag"], humanApprovalRequired: false });
-  state = await readTrailState();
-  if (!state.mail.length) state = await createMail({ from: "orders@shop.example", to: state.aliases[0]?.address || "inbox@yourdomain.com", subject: "Your package is delayed", body: "Delivery moved by two days. Trail should update the local order timeline and flag if it changes again.", tags: ["order", "delivery"] });
-  await appendEvent(state, "demo.seeded", "Demo local node data is ready.");
-  return writeTrailState(state);
+  return seedPlatformData();
 }
 
 export function publicStatus(state: TrailState) {
@@ -225,8 +489,38 @@ export function publicStatus(state: TrailState) {
       aliases: state.aliases.length,
       watchers: state.watchers.length,
       mail: state.mail.length,
+      drafts: state.drafts.length,
+      contacts: state.contacts.length,
+      actions: state.actions.length,
       events: state.events.length,
+      graphNodes: state.graph.nodes.length,
+      graphEdges: state.graph.edges.length,
     },
     updatedAt: state.updatedAt,
+  };
+}
+
+export function platformSummary(state: TrailState, query = "") {
+  const folders = state.mail.reduce<Record<string, number>>((acc, mail) => {
+    acc[mail.folder] = (acc[mail.folder] || 0) + 1;
+    return acc;
+  }, {});
+  const unread = state.mail.filter((mail) => mail.unread).length;
+  const priority = state.mail.filter((mail) => mail.importance === "high" || mail.folder === "priority").length;
+  return {
+    status: publicStatus(state),
+    folders,
+    unread,
+    priority,
+    settings: state.settings,
+    aliases: state.aliases,
+    watchers: state.watchers,
+    mail: state.mail,
+    drafts: state.drafts,
+    contacts: state.contacts,
+    actions: state.actions,
+    graph: state.graph,
+    events: state.events.slice(0, 30),
+    search: searchTrailState(state, query),
   };
 }

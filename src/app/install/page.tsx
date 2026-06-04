@@ -1,39 +1,57 @@
 import Link from "next/link";
 
 import { CopyScriptButton } from "@/components/copy-script-button";
-import { Badge, GlassCard, SectionTitle } from "@/components/ui/primitives";
+import { PageShell } from "@/components/single-slab-page";
 import { macLinux, oneLineWindows, quickStart, windowsCmd } from "@/lib/install-scripts";
 
-const setupSteps = [
-  "Fastest: copy the one-line CMD command and paste it into Command Prompt.",
-  "Alternative: download trail-install.cmd and double-click/run it.",
-  "The script installs Git/Node when needed, clones Trail, creates ~/.trail, installs packages, builds, and launches the app.",
-  "Open the dashboard, choose Quick Domain / Relay Node / Sovereign MX, then create aliases and watchers.",
+const navItems = [
+  { href: "/", label: "Trail" },
+  { href: "/pass", label: "Pass" },
+  { href: "/ecosystem", label: "Ecosystem" },
+  { href: "/dashboard", label: "Control" },
 ];
 
-const createdFolders = ["config", "keys", "vault", "mail", "attachments", "index", "graph", "watchers", "queues", "backups"];
+const setupSteps = [
+  {
+    label: "01 / Copy",
+    title: "Paste one command into Windows CMD.",
+    body: "The fastest path downloads the official Trail installer from this page, saves it into your Temp folder, then runs it. You do not need to manually copy folders around.",
+  },
+  {
+    label: "02 / Prepare",
+    title: "The script checks Git, Node, and local folders.",
+    body: "It installs missing basics with winget when possible, creates the local Trail home directory, and keeps mail, vault, graph, watcher, queue, and backup data under your user profile.",
+  },
+  {
+    label: "03 / Build",
+    title: "Trail is cloned, installed, and built locally.",
+    body: "If Trail already exists as a Git checkout, the script updates it. If a non-Git folder is in the way, it gets moved aside instead of being destroyed.",
+  },
+  {
+    label: "04 / Launch",
+    title: "The web app and local node open together.",
+    body: "After setup, Trail starts the local node and web app in separate command windows, then opens the browser so the dashboard can finish domain, alias, and watcher setup.",
+  },
+];
 
-function ScriptPanel({ title, subtitle, script, label, downloadHref, downloadLabel }: { title: string; subtitle: string; script: string; label: string; downloadHref?: string; downloadLabel?: string }) {
+const folders = ["config", "keys", "vault", "mail", "attachments", "index", "graph", "watchers", "calendar", "orders", "queues", "backups", "logs", "drafts", "contacts"];
+
+function ScriptBlock({ eyebrow, title, body, script, label, href, download }: { eyebrow: string; title: string; body: string; script: string; label: string; href?: string; download?: string }) {
   return (
-    <GlassCard className="overflow-hidden p-0">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 bg-white/[0.035] p-5">
+    <section className="install-script-block" id={href ? undefined : title.toLowerCase().replaceAll(" ", "-")}>
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-cyan-200">{subtitle}</p>
-          <h2 className="mt-2 text-2xl font-semibold text-white">{title}</h2>
+          <p className="section-kicker">{eyebrow}</p>
+          <h2>{title}</h2>
+          <p>{body}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {downloadHref ? (
-            <a href={downloadHref} className="rounded-full border border-cyan-300/25 px-5 py-2.5 text-sm font-semibold text-cyan-100 hover:bg-cyan-300/10">
-              {downloadLabel ?? "Download"}
-            </a>
-          ) : null}
+        <div className="flex flex-wrap gap-3">
+          {href ? <a className="soft-glass-button ghost" href={href}>{download ?? "Download"}</a> : null}
           <CopyScriptButton script={script} label={label} />
         </div>
       </div>
-      <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap bg-[#030806]/90 p-5 font-mono text-xs leading-6 text-emerald-100">
-        {script}
-      </pre>
-    </GlassCard>
+      <pre className="install-code">{script}</pre>
+    </section>
   );
 }
 
@@ -44,101 +62,125 @@ export const metadata = {
 
 export default function InstallPage() {
   return (
-    <main className="relative overflow-hidden px-5 py-6 md:px-8">
-      <div className="orb left-8 top-20 h-44 w-44 bg-cyan-400/15" />
-      <div className="orb right-10 top-24 h-56 w-56 bg-violet-400/15 [animation-delay:1.2s]" />
-
-      <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 backdrop-blur-xl">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-300 text-sm font-black text-slate-950">T</div>
-          <div>
-            <p className="font-semibold text-white">Trail</p>
-            <p className="text-xs text-slate-400">Installer</p>
+    <PageShell brand="Install" brandHref="/install" navItems={navItems} action={{ href: "/dashboard", label: "Dashboard" }} tone="trail">
+      <section className="mx-auto mt-10 flex max-w-6xl justify-center pb-10">
+        <div className="single-slab mx-auto w-full max-w-[980px] rounded-[2.25rem] px-7 py-8 md:px-12 md:py-11">
+          <div className="slab-topbar flex items-center justify-between pb-9 text-[9px] uppercase tracking-[0.32em] text-white/48">
+            <span>trail install</span>
+            <span className="hidden sm:inline">windows · local node · dashboard</span>
+            <span>05</span>
           </div>
-        </Link>
-        <div className="flex items-center gap-2">
-          <Link href="/dashboard" className="hidden rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 sm:inline-flex">Dashboard</Link>
-          <Badge tone="emerald">one-copy setup</Badge>
-        </div>
-      </nav>
 
-      <section className="mx-auto grid max-w-7xl gap-8 pb-14 pt-16 lg:grid-cols-[1fr_.85fr] lg:items-center">
-        <div>
-          <div className="mb-6 inline-flex rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-100">Paste one script into CMD. Trail handles the rest.</div>
-          <h1 className="max-w-4xl text-5xl font-semibold leading-[0.95] tracking-[-0.06em] text-white md:text-7xl">Install the local email OS in one shot.</h1>
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">This page gives users a copyable setup script that installs prerequisites, clones Trail, creates the local node folders, builds the app, and opens the dashboard.</p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <a href="#one-line" className="rounded-full bg-cyan-200 px-6 py-3 font-semibold text-slate-950 shadow-[0_0_40px_rgba(94,234,212,.25)]">Copy one-line CMD</a>
-            <a href="/install/trail-install.cmd" className="rounded-full border border-cyan-300/25 px-6 py-3 font-semibold text-cyan-100 hover:bg-cyan-300/10">Download .cmd</a>
-            <a href="#windows" className="rounded-full border border-cyan-300/25 px-6 py-3 font-semibold text-cyan-100 hover:bg-cyan-300/10">Full script</a>
-            <a href="/dashboard" className="rounded-full border border-white/15 px-6 py-3 font-semibold text-white hover:bg-white/10">Open dashboard</a>
-          </div>
-        </div>
-
-        <GlassCard className="p-6">
-          <SectionTitle align="left" eyebrow="What it sets up" title="App, node, vault, and dashboard" body="The setup script creates a Trail home directory and launches both the web app and standalone local node." />
-          <div className="grid grid-cols-2 gap-3">
-            {createdFolders.map((folder) => (
-              <div key={folder} className="rounded-2xl border border-white/10 bg-slate-950/60 p-3">
-                <code className="text-sm text-cyan-100">~/.trail/{folder}</code>
-              </div>
-            ))}
-          </div>
-        </GlassCard>
-      </section>
-
-      <section className="mx-auto max-w-7xl py-8">
-        <GlassCard className="p-6">
-          <div className="grid gap-4 md:grid-cols-4">
-            {setupSteps.map((step, index) => (
-              <div key={step} className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
-                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-300/10 font-semibold text-cyan-100">{index + 1}</div>
-                <p className="text-sm leading-6 text-slate-300">{step}</p>
-              </div>
-            ))}
-          </div>
-        </GlassCard>
-      </section>
-
-      <section id="one-line" className="mx-auto max-w-7xl py-8">
-        <GlassCard className="overflow-hidden p-0">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 bg-cyan-300/10 p-5">
+          <div className="grid gap-10 py-8 md:grid-cols-[1.05fr_.95fr] md:items-end md:py-12">
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-cyan-200">fastest Windows path</p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">One line to paste into CMD</h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">For a hosted site, replace localhost with the real Trail domain. This command downloads the .cmd installer, saves it to Temp, and runs it.</p>
+              <p className="mb-5 text-[10px] uppercase tracking-[0.42em] text-amber-100/62">One-copy local setup</p>
+              <h1 className="max-w-3xl text-5xl font-semibold leading-[0.92] tracking-[-0.08em] text-white md:text-7xl">Install Trail without guessing what to run.</h1>
             </div>
-            <CopyScriptButton script={oneLineWindows} label="Copy one-line command" />
-          </div>
-          <pre className="overflow-auto whitespace-pre-wrap bg-[#030806]/90 p-5 font-mono text-sm leading-7 text-emerald-100">{oneLineWindows}</pre>
-        </GlassCard>
-      </section>
-
-      <section id="windows" className="mx-auto max-w-7xl py-8">
-        <ScriptPanel title="Windows CMD installer" subtitle="recommended" script={windowsCmd} label="Copy Windows CMD script" downloadHref="/install/trail-install.cmd" downloadLabel="Download .cmd" />
-      </section>
-
-      <section id="restart" className="mx-auto max-w-7xl py-8">
-        <ScriptPanel title="Restart an existing install" subtitle="quick command" script={quickStart} label="Copy restart commands" />
-      </section>
-
-      <section className="mx-auto max-w-7xl py-8">
-        <ScriptPanel title="macOS / Linux installer" subtitle="optional" script={macLinux} label="Copy shell script" downloadHref="/install/trail-install.sh" downloadLabel="Download .sh" />
-      </section>
-
-      <section className="mx-auto max-w-7xl pb-20 pt-8">
-        <GlassCard className="p-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-violet-200">After install</p>
-              <h2 className="mt-2 text-3xl font-semibold text-white">Finish setup in the control dashboard.</h2>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">Pick a mail mode, enter your domain, create aliases, and test local AI watchers. The installer prepares the local machine; the dashboard handles personal configuration.</p>
+            <div className="space-y-5">
+              <p className="max-w-xl text-base leading-8 text-white/66">This page is the clean setup path for the local-first email OS. Copy one Windows command, download the installer, or inspect the full scripts before running them. The installer prepares the app, the local node, and the user-owned storage folders that Trail needs.</p>
+              <div className="flex flex-wrap gap-3">
+                <a href="#one-line" className="soft-glass-button">Copy Windows command</a>
+                <a href="/install/trail-install.cmd" className="soft-glass-button ghost">Download .cmd</a>
+                <Link href="/dashboard" className="soft-glass-button ghost">Open dashboard</Link>
+              </div>
             </div>
-            <a href="/dashboard" className="rounded-full bg-cyan-200 px-6 py-3 font-semibold text-slate-950 shadow-[0_0_40px_rgba(94,234,212,.25)]">Open dashboard</a>
           </div>
-        </GlassCard>
+
+          <div className="glass-column mt-2">
+            <div className="quiet-coordinate"><p>CMD</p><span>fastest Windows path</span></div>
+            <div className="quiet-coordinate"><p>~/.trail</p><span>local data home</span></div>
+            <div className="quiet-coordinate"><p>3000</p><span>dashboard port</span></div>
+          </div>
+
+          <div className="mt-10 border-t border-white/10 pt-3">
+            <div className="quiet-line">
+              <span>What this is</span>
+              <p>A practical install page, not a random code dump. It tells the user what will happen, where data goes, what the script starts, and how to continue setup afterward.</p>
+            </div>
+            <div className="quiet-line">
+              <span>What it creates</span>
+              <p>Trail keeps local working state under your user profile: config, keys, vault, mail, attachments, search index, graph memory, watchers, queues, and backups.</p>
+            </div>
+            <div className="quiet-line">
+              <span>What it does not do</span>
+              <p>The installer does not magically configure your domain or read your inbox by itself. It gets the local app ready; the dashboard handles domain, alias, mail-mode, and watcher setup.</p>
+            </div>
+          </div>
+
+          <section className="mt-12 border-t border-white/10 pt-10">
+            <p className="section-kicker">Install flow</p>
+            <h2 className="install-section-title">Four clear steps, all inside one local setup path.</h2>
+            <div className="mt-7 grid gap-4 md:grid-cols-2">
+              {setupSteps.map((step) => (
+                <div className="install-step" key={step.label}>
+                  <span>{step.label}</span>
+                  <h3>{step.title}</h3>
+                  <p>{step.body}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="mt-12 border-t border-white/10 pt-10">
+            <p className="section-kicker">Local folders</p>
+            <h2 className="install-section-title">The installer makes a home for the private parts.</h2>
+            <p className="mt-5 max-w-3xl text-base leading-8 text-white/66">These folders live under the Trail home directory so the product has an obvious place for config, vault state, mail fixtures, indexes, graph data, watcher rules, queues, and backups.</p>
+            <div className="mt-7 grid grid-cols-2 gap-3 md:grid-cols-5">
+              {folders.map((folder) => <code className="install-folder" key={folder}>~/.trail/{folder}</code>)}
+            </div>
+          </section>
+
+          <section className="install-script-block mt-12 border-t border-white/10 pt-10" id="one-line">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="section-kicker">Fastest Windows path</p>
+                <h2>One line to paste into CMD.</h2>
+                <p>Use this when you just want the local install to start. It downloads the Windows installer from the running Trail app and executes it from your Temp folder.</p>
+              </div>
+              <CopyScriptButton script={oneLineWindows} label="Copy one-line command" />
+            </div>
+            <pre className="install-code one-line">{oneLineWindows}</pre>
+          </section>
+
+          <ScriptBlock
+            eyebrow="Recommended"
+            title="Windows CMD installer"
+            body="This is the full Windows installer. It checks prerequisites, prepares folders, clones or updates Trail, installs packages, builds the app, and starts the web app plus local node."
+            script={windowsCmd}
+            label="Copy Windows script"
+            href="/install/trail-install.cmd"
+            download="Download .cmd"
+          />
+
+          <ScriptBlock
+            eyebrow="Restart"
+            title="Restart an existing install"
+            body="If Trail is already installed, these commands are the short manual path to restart the app and node from an existing checkout."
+            script={quickStart}
+            label="Copy restart commands"
+          />
+
+          <ScriptBlock
+            eyebrow="Optional"
+            title="macOS / Linux installer"
+            body="The Unix path is here for completeness. The Windows installer is the main path for this machine, but the shell script keeps the project portable."
+            script={macLinux}
+            label="Copy shell script"
+            href="/install/trail-install.sh"
+            download="Download .sh"
+          />
+
+          <section className="mt-12 border-t border-white/10 pt-10">
+            <p className="section-kicker">After install</p>
+            <h2 className="install-section-title">Finish setup in the dashboard.</h2>
+            <p className="mt-5 max-w-3xl text-base leading-8 text-white/66">Once the app is running, open Control to choose the mail mode, enter the domain, create aliases, test local messages, and define watchers. Install gets the machine ready; Control turns the install into your private email workspace.</p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link href="/dashboard" className="soft-glass-button">Open dashboard</Link>
+              <Link href="/" className="soft-glass-button ghost">Back to Trail</Link>
+            </div>
+          </section>
+        </div>
       </section>
-    </main>
+    </PageShell>
   );
 }
-

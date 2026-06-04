@@ -1,4 +1,4 @@
-export const windowsCmd = String.raw`@echo off
+@echo off
 setlocal EnableExtensions EnableDelayedExpansion
 set "TRAIL_REPO=https://github.com/taisrisk/Trail.git"
 set "TRAIL_DIR=%USERPROFILE%\Trail"
@@ -72,40 +72,4 @@ echo Starting Trail now...
 start "Trail Local Node" cmd /k "cd /d %TRAIL_DIR% && npm run trail:node"
 start "Trail Web" cmd /k "cd /d %TRAIL_DIR% && npm run dev"
 start "" "http://localhost:3000/mail"
-endlocal`;
-
-export const macLinux = String.raw`#!/usr/bin/env bash
-set -euo pipefail
-TRAIL_REPO="https://github.com/taisrisk/Trail.git"
-TRAIL_DIR="$HOME/Trail"
-TRAIL_HOME="$HOME/.trail"
-
-command -v git >/dev/null || { echo "Install git first."; exit 1; }
-command -v node >/dev/null || { echo "Install Node.js LTS first."; exit 1; }
-
-mkdir -p "$TRAIL_HOME"/{config,keys,vault,mail,attachments,index,graph,watchers,calendar,orders,queues,backups,logs,drafts,contacts}
-
-if [ -d "$TRAIL_DIR/.git" ]; then
-  cd "$TRAIL_DIR"
-  git pull --ff-only
-else
-  [ -e "$TRAIL_DIR" ] && mv "$TRAIL_DIR" "$TRAIL_DIR-backup-$(date +%s)"
-  git clone "$TRAIL_REPO" "$TRAIL_DIR"
-  cd "$TRAIL_DIR"
-fi
-
-npm install
-npm run build
-
-printf '\nTrail installed.\nApp: http://localhost:3000\nMail: http://localhost:3000/mail\nDashboard: http://localhost:3000/dashboard\n\n'
-(npm run trail:node &)
-npm run dev`;
-
-export const quickStart = String.raw`cd %USERPROFILE%\Trail
-npm run dev
-
-:: in another CMD window:
-cd %USERPROFILE%\Trail
-npm run trail:node`;
-
-export const oneLineWindows = String.raw`curl -L https://raw.githubusercontent.com/taisrisk/Trail/main/public/downloads/trail-install.cmd -o %TEMP%\trail-install.cmd && %TEMP%\trail-install.cmd`;
+endlocal

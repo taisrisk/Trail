@@ -1,103 +1,70 @@
-import Link from "next/link";
-
-import { listSafeItems, passSummary, readPassState } from "@/lib/server/pass-store";
+import { PassDashboard } from "@/components/pass-dashboard";
+import { HeroSlab, PageShell } from "@/components/single-slab-page";
+import { listDevices, listSafeItems, passSummary, readPassState } from "@/lib/server/pass-store";
 
 export const metadata = {
   title: "Erme Pass",
   description: "Private password manager and passkey-compatible vault for iOS, PC, and Chrome extension ecosystems.",
 };
 
-const quietLines = [
-  ["Unlock", "Master key stays with the trusted device before any vault content is readable."],
-  ["Vault", "Passwords, passkeys, cards, notes, tokens, and recovery codes live as encrypted local state."],
-  ["Clients", "Chrome, iOS, PC helper, and web shell become thin surfaces over the same private core."],
+const navItems = [
+  { href: "/", label: "Trail" },
+  { href: "/ecosystem", label: "Ecosystem" },
+  { href: "/dashboard", label: "Control" },
 ];
 
-function PassNav() {
-  return (
-    <nav className="single-nav mx-auto flex max-w-6xl items-center justify-between px-2 py-2 text-[11px] uppercase tracking-[0.24em] text-smoke-200/70">
-      <Link href="/pass" className="text-white/90">Erme Pass</Link>
-      <div className="hidden items-center gap-8 md:flex">
-        <Link href="/">Trail</Link>
-        <Link href="/ecosystem">Ecosystem</Link>
-        <Link href="/dashboard">Dashboard</Link>
-      </div>
-      <Link href="/install" className="rounded-full border border-white/15 px-4 py-2 text-white/85 shadow-[inset_0_1px_0_rgba(255,255,255,.12)]">Install</Link>
-    </nav>
-  );
-}
-
-function Coordinate({ value, label }: { value: string | number; label: string }) {
-  return (
-    <div className="quiet-coordinate">
-      <p>{value}</p>
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function QuietLine({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="quiet-line">
-      <span>{label}</span>
-      <p>{value}</p>
-    </div>
-  );
-}
-
 export default async function PassPage() {
-  const [state, initialItems] = await Promise.all([readPassState(), listSafeItems()]);
+  const [state, initialItems, initialDevices] = await Promise.all([readPassState(), listSafeItems(), listDevices()]);
   const initialStatus = passSummary(state);
-  const coordinates = [
-    [initialStatus.counts.items, "local items"],
-    [initialStatus.counts.devices, "paired devices"],
-    [initialItems.length, "redacted records"],
-  ];
 
   return (
-    <main className="natural-page pass-forest relative min-h-screen overflow-hidden px-5 py-6 text-white md:px-8">
-      <div className="forest-depth" />
-      <div className="forest-tree forest-tree-left" />
-      <div className="forest-tree forest-tree-right" />
-      <div className="wood-form wood-form-left" />
-      <div className="wood-form wood-form-right" />
-      <div className="ambient-fog" />
-
-      <PassNav />
-
-      <section className="single-slab cinematic-slab mx-auto mt-10 flex max-w-6xl flex-col rounded-[2.25rem] px-6 py-7 md:px-12 md:py-10 lg:px-16 lg:py-14">
-        <div className="slab-topbar flex items-center justify-between pb-8 text-[10px] uppercase tracking-[0.28em] text-white/46">
-          <span>pass.erme.onl</span>
-          <span className="hidden md:inline">Local unlock first</span>
-          <span>02 / 03</span>
-        </div>
-
-        <div className="grid flex-1 gap-10 lg:grid-cols-[1.08fr_.92fr] lg:items-center">
-          <div>
-            <p className="mb-5 text-xs uppercase tracking-[0.38em] text-blue-100/66">Private vault surface</p>
-            <h1 className="max-w-4xl text-5xl font-light leading-[0.94] tracking-[-0.075em] text-white md:text-7xl">
-              Secrets on one quiet pane of glass.
-            </h1>
-            <p className="mt-7 max-w-2xl text-base leading-8 text-white/54 md:text-lg">
-              Erme Pass removes the dashboard noise: one calm slab for the vault layer, local keys, redacted metadata, and thin trusted clients.
-            </p>
-          </div>
-
-          <div className="glass-column">
-            {coordinates.map(([value, label]) => <Coordinate key={label as string} value={value} label={label as string} />)}
-          </div>
-        </div>
-
-        <div className="mt-12 grid gap-8 border-t border-white/10 pt-8 lg:grid-cols-[1fr_.72fr]">
-          <div className="space-y-1">
-            {quietLines.map(([label, value]) => <QuietLine key={label} label={label} value={value} />)}
-          </div>
-          <div className="flex items-end justify-start gap-3 lg:justify-end">
-            <Link href="/dashboard" className="soft-glass-button">Open vault</Link>
-            <Link href="/" className="soft-glass-button ghost">Trail</Link>
-          </div>
-        </div>
-      </section>
-    </main>
+    <PageShell brand="Erme Pass" brandHref="/pass" navItems={navItems} action={{ href: "/dashboard", label: "Vault" }} tone="pass">
+      <HeroSlab
+        eyebrow="Password manager and access layer"
+        title="Your secrets should not become somebody else’s database."
+        body="Erme Pass is the vault side of the Erme ecosystem. It is built for passwords, passkeys, secure notes, cards, recovery codes, and device unlock flows, with local-first storage and redacted APIs so the interface can be useful without dumping secrets into the page."
+        topLeft="pass.erme.onl"
+        topCenter="vault · passkeys · devices"
+        topRight="03"
+        coordinates={[
+          { value: initialStatus.counts.items, label: "local vault items" },
+          { value: initialStatus.counts.devices, label: "paired devices" },
+          { value: initialItems.length, label: "safe redacted records" },
+        ]}
+        lines={[
+          { label: "What it stores", value: "Passwords, passkeys, identities, secure notes, cards, SSH/API secrets, recovery codes, and account metadata can belong in the vault." },
+          { label: "What the UI shows", value: "The web surface should show names, types, dates, device state, and safe status. It should not casually print passwords, tokens, raw keys, or private recovery material." },
+          { label: "How unlock should work", value: "The trusted device owns the unlock ceremony first. Future clients can use Windows Hello, Face ID, or local helper sessions instead of putting long-lived secrets in the browser." },
+          { label: "Why it connects to Trail", value: "Email and passwords are the two pieces of online identity people lose control of fastest. Trail and Pass are meant to protect both as one private stack." },
+        ]}
+        sections={[
+          {
+            kicker: "Product shape",
+            title: "A vault that feels like part of the operating system.",
+            body: "Pass should not feel like a random password list sitting on a website. It should feel like a private access layer: generate strong passwords, save accounts, unlock with a trusted device, fill only what the user chooses, and sync only encrypted state when sync is enabled.",
+            lines: [
+              { label: "Browser", value: "A Chrome extension can detect login forms, offer save/fill/generate actions, and talk to the local helper instead of carrying the whole vault around." },
+              { label: "Desktop", value: "The PC helper can own the unlocked session, device trust, local storage, and native prompts for sensitive actions." },
+              { label: "Mobile", value: "An iOS app can use Face ID/Touch ID and Password AutoFill patterns while respecting platform limits honestly." },
+              { label: "Recovery", value: "Emergency kits and recovery codes should be encrypted, exportable, and explained clearly instead of hidden behind scary settings." },
+            ],
+          },
+          {
+            kicker: "Security posture",
+            title: "Useful surface, strict boundaries.",
+            body: "The point is not to decorate a vault with privacy words. The interface should make the safety boundaries obvious: what is stored locally, what is redacted, what can sync, what cannot leave the machine, and what actions require a user gesture.",
+            lines: [
+              { label: "Redaction", value: "APIs should return safe summaries by default: title, account, type, updated time, strength, and device status — not the actual secret." },
+              { label: "Encryption", value: "Per-item authenticated encryption and strong key derivation are the intended direction for real vault storage and sync." },
+              { label: "Sync relay", value: "If sync exists, it should move ciphertext, device manifests, version clocks, and conflicts — never plaintext vault content." },
+              { label: "User control", value: "Filling credentials, exporting vaults, linking devices, and revealing secrets should be deliberate actions, not background magic." },
+            ],
+          },
+        ]}
+        primaryCta={{ href: "/dashboard", label: "Open vault control" }}
+        secondaryCta={{ href: "/ecosystem", label: "View ecosystem" }}
+      />
+      <PassDashboard initialStatus={initialStatus} initialItems={initialItems} initialDevices={initialDevices} />
+    </PageShell>
   );
 }

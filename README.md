@@ -14,7 +14,40 @@ Trail is not trying to be another hosted inbox. The goal is bigger:
 
 ## Status
 
-Trail is currently an early open-source product scaffold/prototype. The repository contains the public product UI, architecture docs, API seams, and implementation direction for the BYK/local-mail model. Real SMTP receiving, IMAP sync, encryption, DNS automation, and local node storage are planned modules and should be treated as scaffold until implemented and security-reviewed.
+Trail is currently an early open-source MVP scaffold/prototype. The repository contains a working Next.js product UI, mutable local JSON-backed APIs, a standalone local node smoke server, installer scripts, Erme Pass local encrypted item storage, and demo data flows for inbox/watchers/knowledge graph/action queue. Real SMTP receiving, IMAP sync, production-grade encryption review, DNS automation, browser-extension autofill, and mobile clients are still planned modules.
+
+## Current working surfaces
+
+- `/mail` — full Trail workspace with classic inbox, message-style inbox, knowledge base/contact graph, timeline, watchers, drafts, and action queue.
+- `/dashboard` — live local node control for setup, aliases, watchers, and test message import.
+- `/pass` — Erme Pass vault UI with generator, encrypted local item creation, redacted item list, device scaffold, and safe status APIs.
+- `/install` — Windows and macOS/Linux install scripts for cloning, preparing `~/.trail`, building, and running the local app/node.
+- `/api/platform` and `/api/node/*` — mutable local state APIs backed by `~/.trail/config/trail-state.json`.
+- `/api/pass/*` — local Erme Pass APIs backed by `ERME_PASS_HOME`, `PASS_HOME`, or `~/.erme/pass`.
+
+## Install
+
+Windows one-liner after this repo is pushed:
+
+```cmd
+curl -L https://raw.githubusercontent.com/taisrisk/Trail/main/public/downloads/trail-install.cmd -o %TEMP%\trail-install.cmd && %TEMP%\trail-install.cmd
+```
+
+Local development:
+
+```bash
+npm install
+npm run dev
+npm run trail:node
+```
+
+Verification:
+
+```bash
+npm run lint
+npm run build
+npm run docker:smoke
+```
 
 ## Why Trail exists
 

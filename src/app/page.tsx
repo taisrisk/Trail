@@ -23,6 +23,7 @@ function Nav() {
         </div>
       </div>
       <div className="hidden items-center gap-2 md:flex">
+        <a href="/install" className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-xs font-medium text-cyan-100 hover:bg-cyan-300/15">Install</a>
         <Badge>Open source</Badge>
         <Badge tone="violet">Local-first</Badge>
         <Badge tone="emerald">Domain-owned</Badge>
@@ -253,7 +254,8 @@ export default function Home() {
           <h1 className="max-w-4xl text-5xl font-semibold leading-[0.95] tracking-[-0.06em] text-white md:text-7xl">Your domain becomes a local-first AI email OS.</h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">Trail lets users own `you@yourdomain.com`, route mail through replaceable pipes, and keep the real inbox, vault, search, knowledge graph, and AI watchers on their own PC.</p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <a href="/dashboard" className="rounded-full bg-cyan-200 px-6 py-3 font-semibold text-slate-950 shadow-[0_0_40px_rgba(94,234,212,.25)]">Open control dashboard</a>
+            <a href="/install" className="rounded-full bg-cyan-200 px-6 py-3 font-semibold text-slate-950 shadow-[0_0_40px_rgba(94,234,212,.25)]">Install Trail</a>
+            <a href="/dashboard" className="rounded-full border border-cyan-300/25 px-6 py-3 font-semibold text-cyan-100 hover:bg-cyan-300/10">Open control dashboard</a>
             <a href="#modes" className="rounded-full border border-cyan-300/25 px-6 py-3 font-semibold text-cyan-100 hover:bg-cyan-300/10">Explore mail modes</a>
             <a href="#roadmap" className="rounded-full border border-white/15 px-6 py-3 font-semibold text-white hover:bg-white/10">GitHub roadmap</a>
           </div>

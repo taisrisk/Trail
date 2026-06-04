@@ -7,6 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:smoke": "node scripts/docker-smoke.mjs",
     "trail:node": "node scripts/trail-local-server.mjs",
     "trail:health": "node -e \"fetch('http://127.0.0.1:8787/health').then(r=>r.json()).then(console.log).catch(err=>{console.error(err.message); process.exit(1)})\""
   },

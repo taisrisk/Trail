@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Badge, GlassCard, SectionTitle, TerminalBlock } from "@/components/ui/primitives";
+import { PassDashboard } from "@/components/pass-dashboard";
 import { passArchitecture, passSecurityRules } from "@/lib/erme-ecosystem";
 
 const apps = [
@@ -57,6 +58,8 @@ export default function PassPage() {
           </div>
         </GlassCard>
       </section>
+
+      <PassDashboard />
 
       <section className="mx-auto max-w-7xl py-12">
         <SectionTitle eyebrow="Vault scope" title="It should be a whole ecosystem, not a tiny password list." body="Start with normal passwords, but design the vault around everything people lose access to: passkeys, notes, cards, identities, tokens, and recovery codes." />

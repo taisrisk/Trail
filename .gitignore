@@ -19,9 +19,22 @@
 
 # production
 /build
+/dist
+
+# local Trail runtime data - never commit real mail, keys, vaults, or queues
+.trail/
+trail-data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.key
+*.age
+*.gpg
 
 # misc
 .DS_Store
+Thumbs.db
 *.pem
 
 # debug
@@ -30,8 +43,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files and local secrets
+.env
+.env.*
+!.env.example
 
 # vercel
 .vercel

@@ -1,10 +1,14 @@
 import { ControlDashboard } from "@/components/control-dashboard";
+import { platformSummary, readTrailState } from "@/lib/server/trail-store";
 
 export const metadata = {
   title: "Trail Control",
-  description: "Local Trail node control surface for setup, aliases, watchers, vault, and inbox testing.",
+  description: "Phase 1 Trail local node command center for setup, aliases, watchers, local vault mail, and approvals.",
 };
 
-export default function DashboardPage() {
-  return <ControlDashboard />;
+export const dynamic = "force-dynamic";
+
+export default async function DashboardPage() {
+  const state = await readTrailState();
+  return <ControlDashboard initialData={platformSummary(state)} />;
 }

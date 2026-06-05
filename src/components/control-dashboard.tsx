@@ -2,26 +2,41 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Badge, GlassCard } from "@/components/ui/primitives";
+import { Badge } from "@/components/ui/primitives";
 
 type Mode = "quick-domain" | "relay-node" | "sovereign-mx";
 type RunState = "fresh" | "running" | "paused";
+type MailFolder = "inbox" | "priority" | "orders" | "finance" | "sent" | "archive";
 
-interface StatusPayload {
-  status: {
-    nodeId: string;
-    runState: RunState;
-    home: string;
-    domain?: { domain: string; mode: Mode; catchAll: boolean; createdAt: string };
-    counts: { aliases: number; watchers: number; mail: number; events: number };
-    updatedAt: string;
-  };
-  events: { id: string; type: string; message: string; at: string }[];
-}
+type Status = {
+  nodeId: string;
+  runState: RunState;
+  home: string;
+  domain?: { domain: string; mode: Mode; catchAll: boolean; createdAt: string };
+  counts: Record<string, number>;
+  updatedAt: string;
+};
 
-interface AliasRecord { id: string; address: string; destination: string; label: string; active: boolean; createdAt: string }
-interface WatcherRecord { id: string; name: string; rule: string; actions: string[]; humanApprovalRequired: boolean; active: boolean; createdAt: string }
-interface MailRecord { id: string; from: string; to: string; subject: string; bodyPreview: string; tags: string[]; status: string; receivedAt: string }
+type AliasRecord = { id: string; address: string; destination: string; label: string; active: boolean; createdAt: string };
+type WatcherRecord = { id: string; name: string; rule: string; actions: string[]; humanApprovalRequired: boolean; active: boolean; createdAt: string };
+type MailRecord = { id: string; from: string; to: string; subject: string; body: string; bodyPreview: string; tags: string[]; status: string; folder: MailFolder; unread: boolean; importance: "low" | "normal" | "high"; receivedAt: string };
+type QueueAction = { id: string; type: string; status: string; title: string; detail: string; createdAt: string };
+type TrailEvent = { id: string; type: string; message: string; at: string };
+
+type Platform = {
+  status: Status;
+  folders: Record<string, number>;
+  unread: number;
+  priority: number;
+  aliases: AliasRecord[];
+  watchers: WatcherRecord[];
+  mail: MailRecord[];
+  actions: QueueAction[];
+  drafts: { id: string; to: string; subject: string; status: string; createdAt: string }[];
+  contacts: { id: string; email: string; name: string; messageCount: number; tags: string[] }[];
+  graph: { nodes: { id: string; type: string; label: string; weight: number }[]; edges: { id: string }[] };
+  events: TrailEvent[];
+};
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { ...init, headers: { "Content-Type": "application/json", ...(init?.headers || {}) }, cache: "no-store" });
@@ -30,46 +45,50 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+function time(value?: string) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
+}
+
+function Shell({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`border border-white/10 bg-[#08100d]/70 shadow-[0_30px_90px_rgba(0,0,0,.42)] backdrop-blur-2xl ${className}`}>{children}</div>;
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="grid gap-2 text-sm text-slate-300"><span>{label}</span>{children}</label>;
+  return <label className="grid gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/42"><span>{label}</span>{children}</label>;
 }
 
-function inputClass() {
-  return "rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50";
+const input = "min-h-12 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/22 focus:border-emerald-200/45 focus:bg-black/42";
+
+function Metric({ label, value, note }: { label: string; value: React.ReactNode; note: string }) {
+  return <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.045] p-4"><p className="text-3xl font-semibold tracking-[-0.05em] text-white">{value}</p><p className="mt-1 text-xs uppercase tracking-[0.18em] text-white/38">{label}</p><p className="mt-3 text-xs leading-5 text-white/48">{note}</p></div>;
 }
 
-export function ControlDashboard() {
-  const [status, setStatus] = useState<StatusPayload | null>(null);
-  const [aliases, setAliases] = useState<AliasRecord[]>([]);
-  const [watchers, setWatchers] = useState<WatcherRecord[]>([]);
-  const [mail, setMail] = useState<MailRecord[]>([]);
-  const [error, setError] = useState<string>("");
-  const [busy, setBusy] = useState<string>("");
+export function ControlDashboard({ initialData = null }: { initialData?: Platform | null }) {
+  const [data, setData] = useState<Platform | null>(initialData);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState("");
+  const [domain, setDomain] = useState(initialData?.status.domain?.domain || "yourdomain.com");
+  const [mode, setMode] = useState<Mode>(initialData?.status.domain?.mode || "quick-domain");
+  const [catchAll, setCatchAll] = useState(initialData?.status.domain?.catchAll ?? true);
+  const [aliasLocal, setAliasLocal] = useState("hello");
+  const [aliasLabel, setAliasLabel] = useState("Public inbox");
+  const [watcherName, setWatcherName] = useState("Money + orders guard");
+  const [watcherRule, setWatcherRule] = useState("Flag invoices, payment failures, receipts, shipping delays, refunds, and deadlines.");
+  const [mailFrom, setMailFrom] = useState("client@zrorisc.example");
+  const [mailSubject, setMailSubject] = useState("Invoice deadline and package update");
+  const [mailBody, setMailBody] = useState("Payment is due Friday and the package delivery changed again. Trail should classify this, add it to the timeline, and queue a draft reply.");
 
-  const [domain, setDomain] = useState("yourdomain.com");
-  const [mode, setMode] = useState<Mode>("quick-domain");
-  const [catchAll, setCatchAll] = useState(true);
-  const [aliasLocal, setAliasLocal] = useState("inbox");
-  const [aliasLabel, setAliasLabel] = useState("Main inbox");
-  const [watcherName, setWatcherName] = useState("Order watcher");
-  const [watcherRule, setWatcherRule] = useState("Track receipts, shipping changes, refunds, and delivery dates.");
-  const [mailSubject, setMailSubject] = useState("Your package is delayed");
-  const [mailFrom, setMailFrom] = useState("orders@shop.example");
-  const [mailBody, setMailBody] = useState("Delivery moved by two days. Trail should update the local order timeline and flag if it changes again.");
-
-  const activeAddress = useMemo(() => aliases[0]?.address || `inbox@${status?.status.domain?.domain || domain}`, [aliases, status, domain]);
+  const liveAddress = useMemo(() => data?.aliases[0]?.address || `hello@${data?.status.domain?.domain || domain}`, [data, domain]);
+  const openActions = data?.actions.filter((action) => action.status === "queued").length || 0;
+  const topFolders = ["inbox", "priority", "orders", "finance"].map((folder) => ({ folder, count: data?.folders?.[folder] || 0 }));
 
   async function refresh() {
-    const [statusPayload, aliasPayload, watcherPayload, mailPayload] = await Promise.all([
-      api<StatusPayload>("/api/node/status"),
-      api<{ aliases: AliasRecord[] }>("/api/node/aliases"),
-      api<{ watchers: WatcherRecord[] }>("/api/node/watchers"),
-      api<{ mail: MailRecord[] }>("/api/node/messages"),
-    ]);
-    setStatus(statusPayload);
-    setAliases(aliasPayload.aliases);
-    setWatchers(watcherPayload.watchers);
-    setMail(mailPayload.mail);
+    const next = await api<Platform>("/api/platform");
+    setData(next);
+    if (next.status.domain?.domain) setDomain(next.status.domain.domain);
+    if (next.status.domain?.mode) setMode(next.status.domain.mode);
+    if (typeof next.status.domain?.catchAll === "boolean") setCatchAll(next.status.domain.catchAll);
   }
 
   async function run(label: string, fn: () => Promise<void>) {
@@ -86,118 +105,124 @@ export function ControlDashboard() {
   }
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      refresh().catch((err) => setError(err instanceof Error ? err.message : String(err)));
-    }, 0);
+    const timer = window.setTimeout(() => refresh().catch((err) => setError(err instanceof Error ? err.message : String(err))), 0);
     return () => window.clearTimeout(timer);
   }, []);
 
   function setup(e: FormEvent) {
     e.preventDefault();
-    void run("setup", async () => {
-      await api("/api/node/setup", { method: "POST", body: JSON.stringify({ domain, mode, catchAll }) });
-    });
+    void run("setup", () => api("/api/node/setup", { method: "POST", body: JSON.stringify({ domain, mode, catchAll }) }).then(() => undefined));
   }
 
   function createAlias(e: FormEvent) {
     e.preventDefault();
-    void run("alias", async () => {
-      await api("/api/node/aliases", { method: "POST", body: JSON.stringify({ address: aliasLocal, destination: "local-vault", label: aliasLabel }) });
-    });
+    void run("alias", () => api("/api/node/aliases", { method: "POST", body: JSON.stringify({ address: aliasLocal, destination: "local-vault", label: aliasLabel }) }).then(() => undefined));
   }
 
   function createWatcher(e: FormEvent) {
     e.preventDefault();
-    void run("watcher", async () => {
-      await api("/api/node/watchers", { method: "POST", body: JSON.stringify({ name: watcherName, rule: watcherRule, actions: ["scan", "flag", "draft_reply"], humanApprovalRequired: true }) });
-    });
+    void run("watcher", () => api("/api/node/watchers", { method: "POST", body: JSON.stringify({ name: watcherName, rule: watcherRule, actions: ["scan", "flag", "draft_reply", "order_update"], humanApprovalRequired: true }) }).then(() => undefined));
   }
 
   function importMail(e: FormEvent) {
     e.preventDefault();
-    void run("mail", async () => {
-      await api("/api/node/messages", { method: "POST", body: JSON.stringify({ from: mailFrom, to: activeAddress, subject: mailSubject, body: mailBody, tags: ["local-import", "demo"] }) });
-    });
+    void run("mail", () => api("/api/node/messages", { method: "POST", body: JSON.stringify({ from: mailFrom, to: liveAddress, subject: mailSubject, body: mailBody, tags: ["phase-1", "local-import"] }) }).then(() => undefined));
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden px-5 py-6 md:px-8">
-      <div className="orb left-10 top-24 h-44 w-44 bg-cyan-400/15" />
-      <div className="orb right-16 top-36 h-52 w-52 bg-violet-400/15 [animation-delay:1.2s]" />
+    <main className="natural-page relative min-h-screen overflow-hidden px-4 py-5 text-white md:px-7">
+      <div className="forest-depth" />
+      <div className="ambient-fog" />
+      <div className="forest-tree forest-tree-left" />
+      <div className="forest-tree forest-tree-right" />
 
-      <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 backdrop-blur-xl">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-300 text-sm font-black text-slate-950">T</div>
-          <div><p className="font-semibold text-white">Trail Control</p><p className="text-xs text-slate-400">Local node dashboard</p></div>
-        </Link>
-        <div className="flex items-center gap-2">
-          <Badge tone={status?.status.runState === "running" ? "emerald" : status?.status.runState === "paused" ? "amber" : "slate"}>{status?.status.runState || "loading"}</Badge>
-          <button onClick={() => void run("seed", async () => { await api("/api/node/actions", { method: "POST", body: JSON.stringify({ action: "seed" }) }); })} className="rounded-full bg-cyan-200 px-4 py-2 text-sm font-semibold text-slate-950">Seed demo</button>
-        </div>
-      </nav>
+      <div className="mx-auto grid max-w-[96rem] gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
+        <aside className="single-slab sticky top-5 h-fit rounded-[2rem] p-4">
+          <Link href="/" className="flex items-center gap-3 rounded-3xl border border-white/10 bg-white/[0.045] p-3">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white text-lg font-black text-[#10120f]">T</div>
+            <div><p className="font-semibold">Trail</p><p className="text-xs text-white/42">Phase 1 control</p></div>
+          </Link>
 
-      <section className="mx-auto max-w-7xl pb-10 pt-12">
-        <div className="mb-8">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.34em] text-cyan-200/80">Backend live</p>
-          <h1 className="max-w-4xl text-5xl font-semibold leading-[0.95] tracking-[-0.06em] text-white md:text-7xl">Control the local Trail node.</h1>
-          <p className="mt-6 max-w-3xl text-lg leading-8 text-slate-300">This is now more than a landing page: create the domain config, aliases, local AI watchers, and test inbound mail. Everything persists into the local Trail home folder.</p>
-        </div>
+          <div className="mt-5 space-y-2">
+            {[{ href: "/dashboard", label: "Control Room", note: "setup + node" }, { href: "/mail", label: "Mail OS", note: "inbox + memory" }, { href: "/pass", label: "Pass", note: "local vault" }, { href: "/install", label: "Install", note: "one-click scripts" }].map((item) => (
+              <Link key={item.href} href={item.href} className={`block rounded-2xl border px-4 py-3 transition ${item.href === "/dashboard" ? "border-white/22 bg-white/12" : "border-white/8 bg-white/[0.03] hover:bg-white/[0.07]"}`}>
+                <span className="block text-sm font-semibold">{item.label}</span><span className="text-xs text-white/38">{item.note}</span>
+              </Link>
+            ))}
+          </div>
 
-        {error && <div className="mb-5 rounded-3xl border border-red-300/30 bg-red-400/10 p-4 text-red-100">{error}</div>}
+          <div className="mt-5 rounded-3xl border border-emerald-200/14 bg-emerald-200/[0.06] p-4">
+            <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-emerald-100/70">Node state</p>
+            <div className="mt-3 flex items-center justify-between"><span className="text-2xl font-semibold capitalize">{data?.status.runState || "loading"}</span><Badge tone={data?.status.runState === "running" ? "emerald" : "amber"}>{data?.status.runState || "syncing"}</Badge></div>
+            <p className="mt-3 break-all text-xs leading-5 text-white/45">{data?.status.home || "Loading local Trail home..."}</p>
+          </div>
+        </aside>
 
-        <div className="grid gap-4 md:grid-cols-4">
-          <GlassCard className="p-5"><p className="text-sm text-slate-400">Trail home</p><p className="mt-2 break-all text-sm font-semibold text-white">{status?.status.home || "..."}</p></GlassCard>
-          <GlassCard className="p-5"><p className="text-sm text-slate-400">Domain</p><p className="mt-2 text-2xl font-semibold text-white">{status?.status.domain?.domain || "not set"}</p></GlassCard>
-          <GlassCard className="p-5"><p className="text-sm text-slate-400">Aliases</p><p className="mt-2 text-3xl font-semibold text-white">{status?.status.counts.aliases ?? 0}</p></GlassCard>
-          <GlassCard className="p-5"><p className="text-sm text-slate-400">Watchers / Mail</p><p className="mt-2 text-3xl font-semibold text-white">{status?.status.counts.watchers ?? 0} / {status?.status.counts.mail ?? 0}</p></GlassCard>
-        </div>
-      </section>
+        <section className="min-w-0 space-y-4">
+          <Shell className="overflow-hidden rounded-[2.25rem]">
+            <div className="grid gap-6 p-5 md:p-8 xl:grid-cols-[minmax(0,1fr)_26rem]">
+              <div>
+                <p className="section-kicker">Phase 1 remake · local-first email OS</p>
+                <h1 className="mt-4 max-w-4xl text-5xl font-semibold leading-[0.9] tracking-[-0.075em] text-white md:text-7xl">Control room for your private mail node.</h1>
+                <p className="mt-5 max-w-3xl text-base leading-8 text-white/62 md:text-lg">This page now acts like the first real Trail cockpit: domain routing, aliases, watchers, local mail import, queues, graph health, and recent node events all in one usable surface.</p>
+                <div className="mt-7 flex flex-wrap gap-3">
+                  <button onClick={() => void run("seed", () => api("/api/platform", { method: "POST", body: JSON.stringify({ action: "seed-platform" }) }).then(() => undefined))} className="soft-glass-button">Seed working local data</button>
+                  <Link href="/mail" className="soft-glass-button ghost">Open redesigned mail</Link>
+                  <button onClick={() => void refresh()} className="soft-glass-button ghost">Refresh node</button>
+                </div>
+              </div>
+              <div className="rounded-[1.7rem] border border-white/10 bg-black/24 p-5">
+                <div className="flex items-center justify-between"><p className="text-sm font-semibold text-white/82">Phase 1 readiness</p><span className="text-xs text-white/38">updated {time(data?.status.updatedAt)}</span></div>
+                <div className="mt-5 space-y-3">
+                  {["Domain configured", "Alias routes into local vault", "Watchers create gated actions", "Mail feeds contacts + graph"].map((item, index) => <div key={item} className="flex items-center gap-3"><span className="grid h-7 w-7 place-items-center rounded-full bg-white text-xs font-black text-black">{index + 1}</span><p className="text-sm text-white/68">{item}</p></div>)}
+                </div>
+                <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4"><p className="text-xs uppercase tracking-[0.22em] text-white/36">Active address</p><p className="mt-2 break-all text-lg font-semibold text-emerald-100">{liveAddress}</p></div>
+              </div>
+            </div>
+          </Shell>
 
-      <section className="mx-auto grid max-w-7xl gap-5 pb-16 lg:grid-cols-2">
-        <GlassCard className="p-6">
-          <h2 className="text-2xl font-semibold text-white">1. Create domain setup</h2>
-          <form onSubmit={setup} className="mt-5 grid gap-4">
-            <Field label="Domain"><input className={inputClass()} value={domain} onChange={(e) => setDomain(e.target.value)} /></Field>
-            <Field label="Mode"><select className={inputClass()} value={mode} onChange={(e) => setMode(e.target.value as Mode)}><option value="quick-domain">Quick Domain</option><option value="relay-node">Relay Node</option><option value="sovereign-mx">Sovereign MX</option></select></Field>
-            <label className="flex items-center gap-3 text-sm text-slate-300"><input type="checkbox" checked={catchAll} onChange={(e) => setCatchAll(e.target.checked)} /> Enable catch-all routing</label>
-            <button disabled={busy === "setup"} className="rounded-2xl bg-cyan-200 px-5 py-3 font-semibold text-slate-950 disabled:opacity-60">Create / update setup</button>
-          </form>
-        </GlassCard>
+          {error && <div className="rounded-3xl border border-red-300/25 bg-red-500/10 p-4 text-sm text-red-100">{error}</div>}
 
-        <GlassCard className="p-6">
-          <h2 className="text-2xl font-semibold text-white">2. Create alias</h2>
-          <form onSubmit={createAlias} className="mt-5 grid gap-4">
-            <Field label="Alias local-part or full address"><input className={inputClass()} value={aliasLocal} onChange={(e) => setAliasLocal(e.target.value)} /></Field>
-            <Field label="Label"><input className={inputClass()} value={aliasLabel} onChange={(e) => setAliasLabel(e.target.value)} /></Field>
-            <button disabled={busy === "alias"} className="rounded-2xl bg-cyan-200 px-5 py-3 font-semibold text-slate-950 disabled:opacity-60">Create alias</button>
-          </form>
-        </GlassCard>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <Metric label="messages" value={data?.status.counts.mail ?? "—"} note="stored in the local vault" />
+            <Metric label="aliases" value={data?.status.counts.aliases ?? "—"} note="addresses routing privately" />
+            <Metric label="watchers" value={data?.status.counts.watchers ?? "—"} note="local rules with approval" />
+            <Metric label="queued" value={openActions} note="actions waiting on you" />
+            <Metric label="graph" value={data?.graph.nodes.length ?? "—"} note={`${data?.graph.edges.length || 0} entity links`} />
+          </div>
 
-        <GlassCard className="p-6">
-          <h2 className="text-2xl font-semibold text-white">3. Create local AI watcher</h2>
-          <form onSubmit={createWatcher} className="mt-5 grid gap-4">
-            <Field label="Watcher name"><input className={inputClass()} value={watcherName} onChange={(e) => setWatcherName(e.target.value)} /></Field>
-            <Field label="Natural language rule"><textarea className={`${inputClass()} min-h-28`} value={watcherRule} onChange={(e) => setWatcherRule(e.target.value)} /></Field>
-            <button disabled={busy === "watcher"} className="rounded-2xl bg-cyan-200 px-5 py-3 font-semibold text-slate-950 disabled:opacity-60">Create watcher</button>
-          </form>
-        </GlassCard>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,.95fr)]">
+            <Shell className="rounded-[2rem] p-5 md:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="section-kicker">Launch lane</p><h2 className="mt-2 text-3xl font-semibold tracking-[-0.055em]">Configure the node</h2></div><Badge tone="emerald">durable local state</Badge></div>
+              <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                <form onSubmit={setup} className="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+                  <h3 className="font-semibold">Domain + routing</h3><p className="mt-1 text-sm text-white/42">Sets the identity Trail routes around.</p>
+                  <div className="mt-4 grid gap-3"><Field label="Domain"><input className={input} value={domain} onChange={(e) => setDomain(e.target.value)} /></Field><Field label="Mode"><select className={input} value={mode} onChange={(e) => setMode(e.target.value as Mode)}><option value="quick-domain">Quick Domain</option><option value="relay-node">Relay Node</option><option value="sovereign-mx">Sovereign MX</option></select></Field><label className="flex items-center gap-3 text-sm text-white/58"><input type="checkbox" checked={catchAll} onChange={(e) => setCatchAll(e.target.checked)} /> Catch-all routing</label><button disabled={busy === "setup"} className="rounded-2xl bg-white px-4 py-3 font-semibold text-black disabled:opacity-50">Save routing</button></div>
+                </form>
+                <form onSubmit={createAlias} className="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+                  <h3 className="font-semibold">Alias</h3><p className="mt-1 text-sm text-white/42">Create a new public address into the vault.</p>
+                  <div className="mt-4 grid gap-3"><Field label="Address"><input className={input} value={aliasLocal} onChange={(e) => setAliasLocal(e.target.value)} /></Field><Field label="Label"><input className={input} value={aliasLabel} onChange={(e) => setAliasLabel(e.target.value)} /></Field><button disabled={busy === "alias"} className="rounded-2xl bg-emerald-100 px-4 py-3 font-semibold text-black disabled:opacity-50">Create alias</button></div>
+                </form>
+                <form onSubmit={createWatcher} className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 lg:col-span-2">
+                  <div className="grid gap-4 lg:grid-cols-[18rem_1fr_auto]"><div><h3 className="font-semibold">Local watcher</h3><p className="mt-1 text-sm text-white/42">Plain English rule. Actions stay gated.</p></div><div className="grid gap-3 md:grid-cols-2"><Field label="Name"><input className={input} value={watcherName} onChange={(e) => setWatcherName(e.target.value)} /></Field><Field label="Rule"><textarea className={`${input} min-h-12`} value={watcherRule} onChange={(e) => setWatcherRule(e.target.value)} /></Field></div><button disabled={busy === "watcher"} className="h-12 self-end rounded-2xl bg-white px-5 font-semibold text-black disabled:opacity-50">Add</button></div>
+                </form>
+              </div>
+            </Shell>
 
-        <GlassCard className="p-6">
-          <h2 className="text-2xl font-semibold text-white">4. Import test local mail</h2>
-          <form onSubmit={importMail} className="mt-5 grid gap-4">
-            <Field label="From"><input className={inputClass()} value={mailFrom} onChange={(e) => setMailFrom(e.target.value)} /></Field>
-            <Field label="Subject"><input className={inputClass()} value={mailSubject} onChange={(e) => setMailSubject(e.target.value)} /></Field>
-            <Field label="Body"><textarea className={`${inputClass()} min-h-24`} value={mailBody} onChange={(e) => setMailBody(e.target.value)} /></Field>
-            <button disabled={busy === "mail"} className="rounded-2xl bg-cyan-200 px-5 py-3 font-semibold text-slate-950 disabled:opacity-60">Import into local vault</button>
-          </form>
-        </GlassCard>
-      </section>
+            <Shell className="rounded-[2rem] p-5 md:p-6">
+              <div className="flex items-center justify-between"><div><p className="section-kicker">Test lane</p><h2 className="mt-2 text-3xl font-semibold tracking-[-0.055em]">Import mail</h2></div><Badge tone="cyan">vault write</Badge></div>
+              <form onSubmit={importMail} className="mt-5 grid gap-3"><Field label="From"><input className={input} value={mailFrom} onChange={(e) => setMailFrom(e.target.value)} /></Field><Field label="Subject"><input className={input} value={mailSubject} onChange={(e) => setMailSubject(e.target.value)} /></Field><Field label="Body"><textarea className={`${input} min-h-32`} value={mailBody} onChange={(e) => setMailBody(e.target.value)} /></Field><button disabled={busy === "mail"} className="rounded-2xl bg-white px-4 py-3 font-semibold text-black disabled:opacity-50">Import and classify</button></form>
+              <div className="mt-5 grid grid-cols-4 gap-2">{topFolders.map((item) => <div key={item.folder} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3"><p className="text-xl font-semibold">{item.count}</p><p className="text-[10px] uppercase tracking-[0.18em] text-white/35">{item.folder}</p></div>)}</div>
+            </Shell>
+          </div>
 
-      <section className="mx-auto grid max-w-7xl gap-5 pb-20 lg:grid-cols-3">
-        <GlassCard className="p-6"><h2 className="text-xl font-semibold text-white">Aliases</h2><div className="mt-4 space-y-3">{aliases.map((a) => <div key={a.id} className="rounded-2xl border border-white/10 bg-slate-950/60 p-4"><p className="font-semibold text-white">{a.address}</p><p className="text-sm text-slate-400">{a.label} → {a.destination}</p></div>)}</div></GlassCard>
-        <GlassCard className="p-6"><h2 className="text-xl font-semibold text-white">Watchers</h2><div className="mt-4 space-y-3">{watchers.map((w) => <div key={w.id} className="rounded-2xl border border-white/10 bg-slate-950/60 p-4"><p className="font-semibold text-white">{w.name}</p><p className="mt-1 text-sm text-slate-400">{w.rule}</p><div className="mt-3 flex flex-wrap gap-2">{w.actions.map((action) => <Badge key={action} tone="slate">{action}</Badge>)}</div></div>)}</div></GlassCard>
-        <GlassCard className="p-6"><h2 className="text-xl font-semibold text-white">Local inbox + event log</h2><div className="mt-4 space-y-3">{mail.map((m) => <div key={m.id} className="rounded-2xl border border-white/10 bg-slate-950/60 p-4"><p className="font-semibold text-white">{m.subject}</p><p className="text-sm text-slate-400">{m.from} → {m.to}</p><p className="mt-2 text-sm text-slate-300">{m.bodyPreview}</p></div>)}{status?.events.map((event) => <div key={event.id} className="rounded-2xl border border-cyan-300/10 bg-cyan-300/5 p-3 text-sm text-cyan-100">{event.message}</div>)}</div></GlassCard>
-      </section>
+          <div className="grid gap-4 xl:grid-cols-3">
+            <Shell className="rounded-[2rem] p-5"><h2 className="text-xl font-semibold">Aliases</h2><div className="mt-4 space-y-3">{data?.aliases.slice(0, 6).map((alias) => <div key={alias.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4"><p className="break-all font-semibold text-emerald-100">{alias.address}</p><p className="mt-1 text-xs text-white/42">{alias.label} → {alias.destination}</p></div>)}{!data?.aliases.length && <p className="text-sm text-white/42">No aliases yet.</p>}</div></Shell>
+            <Shell className="rounded-[2rem] p-5"><h2 className="text-xl font-semibold">Watchers</h2><div className="mt-4 space-y-3">{data?.watchers.slice(0, 6).map((watcher) => <div key={watcher.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4"><div className="flex justify-between gap-3"><p className="font-semibold">{watcher.name}</p><Badge tone={watcher.humanApprovalRequired ? "amber" : "emerald"}>{watcher.humanApprovalRequired ? "gated" : "auto"}</Badge></div><p className="mt-2 text-sm leading-6 text-white/50">{watcher.rule}</p></div>)}</div></Shell>
+            <Shell className="rounded-[2rem] p-5"><h2 className="text-xl font-semibold">Node log</h2><div className="mt-4 space-y-3">{data?.events.slice(0, 7).map((event) => <div key={event.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3"><p className="text-sm text-white/68">{event.message}</p><p className="mt-1 text-[11px] text-white/32">{time(event.at)}</p></div>)}</div></Shell>
+          </div>
+        </section>
+      </div>
     </main>
   );
 }

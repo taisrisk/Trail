@@ -14,15 +14,16 @@ Trail is not trying to be another hosted inbox. The goal is bigger:
 
 ## Status
 
-Trail is currently an early open-source MVP scaffold/prototype. The repository contains a working Next.js product UI, mutable local JSON-backed APIs, a standalone local node smoke server, installer scripts, Erme Pass local encrypted item storage, and demo data flows for inbox/watchers/knowledge graph/action queue. Real SMTP receiving, IMAP sync, production-grade encryption review, DNS automation, browser-extension autofill, and mobile clients are still planned modules.
+Trail is currently an early open-source MVP scaffold/prototype. The repository contains a working Next.js product UI, mutable local JSON-backed APIs, a standalone local node smoke server, installer scripts, Erme Pass local encrypted item storage, demo inbox/watchers/knowledge graph/action queue flows, and Phase 1 connector lanes for domain hosting, domain receiving, Gmail OAuth/history import, local model setup, and tool registration. Real SMTP receiving, IMAP sync against live accounts, production-grade encryption review, DNS automation with provider credentials, browser-extension autofill, and mobile clients are still planned modules.
 
 ## Current working surfaces
 
 - `/mail` — full Trail workspace with classic inbox, message-style inbox, knowledge base/contact graph, timeline, watchers, drafts, and action queue.
-- `/dashboard` — live local node control for setup, aliases, watchers, and test message import.
+- `/dashboard` — live local node control for setup, aliases, watchers, test message import, domain host records, receiver setup, Gmail OAuth/history scrape, local model setup, and tool connector registration.
 - `/pass` — Erme Pass vault UI with generator, encrypted local item creation, redacted item list, device scaffold, and safe status APIs.
 - `/install` — Windows and macOS/Linux install scripts for cloning, preparing `~/.trail`, building, and running the local app/node.
 - `/api/platform` and `/api/node/*` — mutable local state APIs backed by `~/.trail/config/trail-state.json`.
+- `/api/connectors` — mutable Phase 1 setup lane for domain hoster, domain receiver, Gmail OAuth refs/history scrape, local model setup/download state, and automation tool connectors.
 - `/api/pass/*` — local Erme Pass APIs backed by `ERME_PASS_HOME`, `PASS_HOME`, or `~/.erme/pass`.
 
 ## Install
@@ -267,6 +268,7 @@ The app includes a polished product UI showing:
 The prototype exposes route handlers that return typed scaffold data:
 
 - `GET /api/connectors`
+- `POST /api/connectors` with actions: `domain-host`, `domain-receiver`, `gmail-oauth`, `gmail-scrape`, `local-model`, `model-downloaded`, `tool`
 - `GET /api/watchers`
 - `GET /api/security`
 - `GET /api/abuse`
@@ -291,27 +293,31 @@ These are intentionally simple right now so the repository has clean places to r
 
 ### Phase 1 — Local node foundation
 
-- [ ] create `trail-node` package
-- [ ] local config at `~/.trail/config`
+- [x] durable local config at `~/.trail/config/trail-state.json`
+- [x] local audit/event log
+- [x] mutable inbox/aliases/watchers/drafts/actions/contact graph state
+- [x] connector state for domain hoster, receiver, Gmail, local models, and tools
+- [ ] create dedicated `trail-node` package
 - [ ] SQLite metadata database
 - [ ] encrypted blob store
-- [ ] local mailbox import format
-- [ ] local audit/event log
+- [ ] normalized local mailbox import format
 
 ### Phase 2 — Domain setup wizard
 
-- [ ] domain ownership verification
-- [ ] Cloudflare DNS instructions
-- [ ] generated MX/SPF/DKIM/DMARC records
-- [ ] tunnel/dashboard URL setup
-- [ ] setup health checks
+- [x] generated MX/SPF/DKIM/DMARC record plan in `/api/connectors`
+- [x] domain hoster state for Cloudflare/registrar/custom providers
+- [x] setup health/readiness appears in dashboard
+- [ ] live domain ownership verification
+- [ ] Cloudflare DNS automation with real API token
+- [ ] tunnel/dashboard URL setup with live health checks
 
 ### Phase 3 — Mail ingress
 
-- [ ] IMAP pull connector
-- [ ] forwarding inbox connector
-- [ ] relay webhook/sync connector
-- [ ] message normalization
+- [x] Gmail OAuth secret-reference connector scaffold
+- [x] Gmail history scrape lane that imports normalized local records for smoke/demo
+- [x] forwarding/receiver mode state for Cloudflare routing, Gmail IMAP, relay webhook, or sovereign SMTP
+- [ ] live IMAP/Gmail API pull connector
+- [ ] relay webhook/sync connector with signed payloads
 - [ ] attachment ingestion
 - [ ] spam/scam classification lane
 

@@ -33,6 +33,11 @@ function defaultState() {
     actions: [],
     graph: { nodes: [], edges: [] },
     settings: { localAiModel: "local-rule-engine", approvalRequired: true, retentionDays: 3650, encryption: "local-dev" },
+    domainHost: undefined,
+    receiver: undefined,
+    gmail: undefined,
+    localModels: [],
+    tools: [],
     events: [{ id: id("evt"), type: "node.server", message: "Standalone Trail local server started.", at }],
     createdAt: at,
     updatedAt: at,
@@ -52,6 +57,8 @@ function normalizeState(raw = {}) {
   state.graph.nodes ||= [];
   state.graph.edges ||= [];
   state.settings = { ...base.settings, ...(state.settings || {}) };
+  state.localModels ||= [];
+  state.tools ||= [];
   state.events ||= [];
   return state;
 }
@@ -181,13 +188,14 @@ function publicStatus(state) {
       events: state.events.length,
       graphNodes: state.graph.nodes.length,
       graphEdges: state.graph.edges.length,
+      connectors: [state.domainHost, state.receiver, state.gmail, ...(state.localModels || []), ...(state.tools || [])].filter(Boolean).length,
     },
     updatedAt: state.updatedAt,
   };
 }
 
 function platformSummary(state) {
-  return { status: publicStatus(state), aliases: state.aliases, watchers: state.watchers, mail: state.mail, drafts: state.drafts, contacts: state.contacts, actions: state.actions, graph: state.graph, events: state.events.slice(0, 30) };
+  return { status: publicStatus(state), connectors: { domainHost: state.domainHost, receiver: state.receiver, gmail: state.gmail, localModels: state.localModels || [], tools: state.tools || [] }, aliases: state.aliases, watchers: state.watchers, mail: state.mail, drafts: state.drafts, contacts: state.contacts, actions: state.actions, graph: state.graph, events: state.events.slice(0, 30) };
 }
 
 async function seed(state) {
@@ -202,6 +210,43 @@ async function seed(state) {
   ];
   for (const sample of samples) if (!state.mail.some((m) => m.subject === sample.subject)) addMail(state, { ...sample, to: state.aliases[0].address });
   event(state, "platform.seeded", "Standalone node seeded platform data.");
+  return state;
+}
+
+function applyConnector(state, body) {
+  const domain = String(body.domain || state.domain?.domain || "yourdomain.com").toLowerCase();
+  if (body.action === "domain-host") {
+    state.domainHost = { provider: body.provider || "cloudflare", domain, nameservers: ["connect.cloudflare.com", "secure.cloudflare.com"], records: [
+      { type: "MX", host: "@", value: "10 route1.mx.cloudflare.net", status: "configured" },
+      { type: "TXT", host: "@", value: "v=spf1 include:_spf.google.com include:_spf.mx.cloudflare.net ~all", status: "configured" },
+      { type: "TXT", host: "_dmarc", value: `v=DMARC1; p=quarantine; rua=mailto:dmarc@${domain}`, status: "configured" },
+      { type: "TXT", host: "trail._domainkey", value: "v=DKIM1; k=rsa; p=GENERATE_DKIM_KEY_IN_PRODUCTION", status: "not-started" },
+    ], status: "configured", updatedAt: now() };
+    event(state, "connector.domain_host", `Domain hoster configured for ${domain}.`);
+  } else if (body.action === "domain-receiver") {
+    state.receiver = { mode: body.mode || "cloudflare-email-routing", targetAddress: body.targetAddress || state.aliases[0]?.address || `inbox@${domain}`, webhookPath: "/api/ingress/relay", inboundSecretRef: "TRAIL_INBOUND_SECRET", status: "configured", updatedAt: now() };
+    event(state, "connector.receiver", `Domain receiver set to ${state.receiver.mode}.`);
+  } else if (body.action === "gmail-oauth") {
+    state.gmail = { clientIdRef: body.clientIdRef || "GOOGLE_CLIENT_ID", tokenRef: body.tokenRef || "GOOGLE_REFRESH_TOKEN", scopes: ["gmail.readonly", "gmail.modify"], historyId: state.gmail?.historyId || "local-history-start", syncState: "connected", imported: state.gmail?.imported || 0, updatedAt: now() };
+    event(state, "connector.gmail", "Gmail OAuth connector configured with secret references only.");
+  } else if (body.action === "gmail-scrape") {
+    if (!state.gmail) applyConnector(state, { action: "gmail-oauth" });
+    const latest = addMail(state, { from: "gmail-source@example.com", to: state.aliases[0]?.address || `inbox@${domain}`, subject: "Gmail history import: standalone smoke", body: "Standalone local node Gmail history scrape lane.", tags: ["gmail-history", "oauth-import"] });
+    state.gmail.imported = (state.gmail.imported || 0) + 1;
+    state.gmail.syncState = "ready";
+    state.gmail.lastScrapeAt = now();
+    state.gmail.historyId = latest.id;
+    event(state, "connector.gmail_scrape", "Standalone Gmail history scrape imported 1 local record.");
+  } else if (body.action === "local-model" || body.action === "model-downloaded") {
+    const model = body.model || "llama3.2:3b";
+    state.localModels.unshift({ id: id("model"), provider: body.provider || "ollama", model, purpose: body.purpose || "watchers", installCommand: body.provider === "llama-cpp" ? `huggingface-cli download ${model}` : `ollama pull ${model}`, status: body.action === "model-downloaded" ? "ready" : "configured", downloadedAt: body.action === "model-downloaded" ? now() : undefined, updatedAt: now() });
+    event(state, "connector.model", `Local model ${model} ${body.action === "model-downloaded" ? "ready" : "configured"}.`);
+  } else if (body.action === "tool") {
+    state.tools.unshift({ id: id("tool"), name: body.name || "Trail automation tool", type: body.type || "automation", status: body.status || "configured", notes: body.notes || "Standalone tool connector.", updatedAt: now() });
+    event(state, "connector.tool", `Tool connector added: ${state.tools[0].name}.`);
+  } else {
+    throw new Error("unknown connector action");
+  }
   return state;
 }
 
@@ -222,6 +267,13 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/aliases") return send(res, 200, { aliases: state.aliases });
     if (req.method === "GET" && url.pathname === "/watchers") return send(res, 200, { watchers: state.watchers });
     if (req.method === "GET" && url.pathname === "/messages") return send(res, 200, { mail: state.mail });
+    if (req.method === "GET" && url.pathname === "/connectors") return send(res, 200, { connectors: platformSummary(state).connectors });
+
+    if (req.method === "POST" && url.pathname === "/connectors") {
+      const body = await parseBody(req);
+      applyConnector(state, body);
+      return send(res, 201, platformSummary(await writeState(state)));
+    }
 
     if (req.method === "POST" && ["/setup", "/domain"].includes(url.pathname)) {
       const body = await parseBody(req);
@@ -265,7 +317,7 @@ const server = createServer(async (req, res) => {
       return send(res, 200, { status: publicStatus(await writeState(state)) });
     }
 
-    return send(res, 404, { error: "not found", routes: ["GET /health", "GET /status", "GET /state", "GET /platform", "GET/POST /aliases", "GET/POST /watchers", "GET/POST /messages", "POST /setup", "POST /actions"] });
+    return send(res, 404, { error: "not found", routes: ["GET /health", "GET /status", "GET /state", "GET /platform", "GET/POST /connectors", "GET/POST /aliases", "GET/POST /watchers", "GET/POST /messages", "POST /setup", "POST /actions"] });
   } catch (error) {
     return send(res, 500, { error: error instanceof Error ? error.message : String(error) });
   }

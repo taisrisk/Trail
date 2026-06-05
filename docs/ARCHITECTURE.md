@@ -40,6 +40,18 @@ Trail is a private email OS built around current email connectors first, then fu
 - **Server encrypted:** message blobs, attachments, search shards, graph shards, calendar/order blobs, connector token envelopes.
 - **Server minimal metadata:** account number, paidUntil, alias routing hashes, queue IDs, spam/reputation counters, DKIM/domain config, legal/abuse hold flags if required.
 
+## Phase 1 connector control plane
+
+Current MVP connector state is local and durable in `~/.trail/config/trail-state.json` through `/api/connectors`:
+
+- **Domain hoster:** provider, domain, nameservers, and generated MX/SPF/DKIM/DMARC/CNAME record plan.
+- **Domain receiver:** selected ingress mode (`cloudflare-email-routing`, `gmail-imap`, `relay-webhook`, or `sovereign-smtp`), target address, webhook seam, and inbound secret reference.
+- **Gmail OAuth:** OAuth client/token references only, approved scopes, current history cursor, last scrape time, and imported count.
+- **Local model:** Ollama/llama.cpp/local-rule-engine model, purpose, install/download command, and ready status.
+- **Tools:** automation/storage/domain/mail tool registrations used by the dashboard and smoke tests.
+
+These records are scaffolds, not production credentials. Live provider tokens belong in env/secrets and must be encrypted before any production sync.
+
 ## AI policy
 
 - Local AI is the default and preferred mode.

@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
-import path from "path";
-import os from "os";
-import crypto from "crypto";
+import * as path from "path";
+import * as os from "os";
+import * as crypto from "crypto";
 
 export type NodeMode = "quick-domain" | "relay-node" | "sovereign-mx";
 export type NodeRunState = "fresh" | "running" | "paused";
@@ -117,6 +117,58 @@ export interface TrailEvent {
   at: string;
 }
 
+export type ConnectorStatus = "not-started" | "configured" | "connected" | "syncing" | "ready" | "error";
+
+export interface DomainHostConfig {
+  provider: "cloudflare" | "namecheap" | "registrar-dns" | "custom";
+  domain: string;
+  zoneId?: string;
+  nameservers: string[];
+  records: { type: "MX" | "TXT" | "CNAME"; host: string; value: string; priority?: number; status: ConnectorStatus }[];
+  status: ConnectorStatus;
+  updatedAt: string;
+}
+
+export interface DomainReceiverConfig {
+  mode: "cloudflare-email-routing" | "gmail-imap" | "relay-webhook" | "sovereign-smtp";
+  targetAddress: string;
+  webhookPath: string;
+  inboundSecretRef: string;
+  status: ConnectorStatus;
+  updatedAt: string;
+}
+
+export interface GmailConnectorConfig {
+  clientIdRef: string;
+  tokenRef: string;
+  scopes: string[];
+  historyId?: string;
+  syncState: ConnectorStatus;
+  lastScrapeAt?: string;
+  imported: number;
+  updatedAt: string;
+}
+
+export interface LocalModelConfig {
+  id: string;
+  provider: "ollama" | "llama-cpp" | "local-rule-engine";
+  model: string;
+  purpose: "watchers" | "summaries" | "drafts" | "embeddings";
+  installCommand: string;
+  status: ConnectorStatus;
+  downloadedAt?: string;
+  updatedAt: string;
+}
+
+export interface ToolConnectorConfig {
+  id: string;
+  name: string;
+  type: "domain" | "mail" | "model" | "automation" | "storage";
+  status: ConnectorStatus;
+  notes: string;
+  updatedAt: string;
+}
+
 export interface TrailState {
   version: 2;
   nodeId: string;
@@ -131,6 +183,11 @@ export interface TrailState {
   actions: QueueAction[];
   graph: { nodes: GraphNode[]; edges: GraphEdge[] };
   settings: TrailSettings;
+  domainHost?: DomainHostConfig;
+  receiver?: DomainReceiverConfig;
+  gmail?: GmailConnectorConfig;
+  localModels: LocalModelConfig[];
+  tools: ToolConnectorConfig[];
   events: TrailEvent[];
   createdAt: string;
   updatedAt: string;
@@ -180,6 +237,8 @@ function defaultState(home = getTrailHome()): TrailState {
     actions: [],
     graph: { nodes: [], edges: [] },
     settings: defaultSettings(),
+    localModels: [],
+    tools: [],
     events: [{ id: id("evt"), type: "node.created", message: "Trail local node state created.", at }],
     createdAt: at,
     updatedAt: at,
@@ -199,6 +258,8 @@ function normalizeState(parsed: Partial<TrailState> & { version?: number }, home
   state.graph.nodes ||= [];
   state.graph.edges ||= [];
   state.settings = { ...defaultSettings(), ...(state.settings || {}) };
+  state.localModels ||= [];
+  state.tools ||= [];
   state.events ||= [];
   return state;
 }
@@ -440,6 +501,93 @@ export async function resolveAction(input: { id: string; status: ActionStatus })
   return writeTrailState(state);
 }
 
+function dnsForDomain(domain: string, receiver = "Cloudflare Email Routing") {
+  return [
+    { type: "MX" as const, host: "@", value: receiver === "Sovereign SMTP" ? `10 mx.${domain}` : "10 route1.mx.cloudflare.net", priority: 10, status: "configured" as ConnectorStatus },
+    { type: "TXT" as const, host: "@", value: "v=spf1 include:_spf.google.com include:_spf.mx.cloudflare.net ~all", status: "configured" as ConnectorStatus },
+    { type: "TXT" as const, host: "_dmarc", value: `v=DMARC1; p=quarantine; rua=mailto:dmarc@${domain}`, status: "configured" as ConnectorStatus },
+    { type: "TXT" as const, host: "trail._domainkey", value: "v=DKIM1; k=rsa; p=GENERATE_DKIM_KEY_IN_PRODUCTION", status: "not-started" as ConnectorStatus },
+    { type: "CNAME" as const, host: "trail", value: "127-0-0-1.local-trail.invalid", status: "configured" as ConnectorStatus },
+  ];
+}
+
+export async function configureDomainHost(input: { provider?: DomainHostConfig["provider"]; domain?: string; zoneId?: string; nameservers?: string[] }) {
+  const state = await readTrailState();
+  const domain = String(input.domain || state.domain?.domain || "yourdomain.com").trim().toLowerCase();
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) throw new Error("Enter a valid domain for the domain hoster.");
+  state.domainHost = { provider: input.provider || "cloudflare", domain, zoneId: input.zoneId, nameservers: input.nameservers?.length ? input.nameservers : ["connect.cloudflare.com", "secure.cloudflare.com"], records: dnsForDomain(domain), status: "configured", updatedAt: now() };
+  await appendEvent(state, "connector.domain_host", `${state.domainHost.provider} domain hoster configured for ${domain}.`);
+  return writeTrailState(state);
+}
+
+export async function configureDomainReceiver(input: { mode?: DomainReceiverConfig["mode"]; targetAddress?: string }) {
+  const state = await readTrailState();
+  const domain = state.domainHost?.domain || state.domain?.domain || "yourdomain.com";
+  state.receiver = { mode: input.mode || "cloudflare-email-routing", targetAddress: input.targetAddress || state.aliases[0]?.address || `inbox@${domain}`, webhookPath: "/api/ingress/relay", inboundSecretRef: "TRAIL_INBOUND_SECRET", status: "configured", updatedAt: now() };
+  await appendEvent(state, "connector.receiver", `Domain receiver set to ${state.receiver.mode}.`);
+  return writeTrailState(state);
+}
+
+export async function configureGmailConnector(input: { clientIdRef?: string; tokenRef?: string; scopes?: string[] }) {
+  const state = await readTrailState();
+  state.gmail = { clientIdRef: input.clientIdRef || "GOOGLE_CLIENT_ID", tokenRef: input.tokenRef || "GOOGLE_REFRESH_TOKEN", scopes: input.scopes?.length ? input.scopes : ["gmail.readonly", "gmail.modify"], historyId: state.gmail?.historyId || "local-history-start", syncState: "connected", imported: state.gmail?.imported || 0, lastScrapeAt: state.gmail?.lastScrapeAt, updatedAt: now() };
+  await appendEvent(state, "connector.gmail", "Gmail OAuth connector configured with secret references only.");
+  return writeTrailState(state);
+}
+
+export async function scrapeGmailHistory(input: { limit?: number } = {}) {
+  let state = await readTrailState();
+  if (!state.gmail) state = await configureGmailConnector({});
+  state = await readTrailState();
+  const count = Math.min(Math.max(Number(input.limit || 3), 1), 25);
+  for (let i = 0; i < count; i += 1) {
+    const subject = [`Gmail history import ${i + 1}: invoice and receipt`, `Gmail history import ${i + 1}: calendar update`, `Gmail history import ${i + 1}: security notice`][i % 3];
+    const exists = state.mail.some((mail) => mail.subject === subject && mail.tags.includes("gmail-history"));
+    if (!exists) state = await createMail({ from: `gmail-source-${i + 1}@example.com`, to: state.aliases[0]?.address || "inbox@yourdomain.com", subject, body: "Imported through the Gmail history scrape lane. Real OAuth tokens are referenced by env var names and are not stored in plaintext state.", tags: ["gmail-history", "oauth-import"] });
+  }
+  state = await readTrailState();
+  state.gmail = { ...(state.gmail || { clientIdRef: "GOOGLE_CLIENT_ID", tokenRef: "GOOGLE_REFRESH_TOKEN", scopes: ["gmail.readonly"], syncState: "connected", imported: 0, updatedAt: now() }), imported: (state.gmail?.imported || 0) + count, syncState: "ready", lastScrapeAt: now(), historyId: `history_${Date.now()}`, updatedAt: now() };
+  await appendEvent(state, "connector.gmail_scrape", `Gmail history scrape imported ${count} local message records.`);
+  return writeTrailState(state);
+}
+
+export async function configureLocalModel(input: { provider?: LocalModelConfig["provider"]; model?: string; purpose?: LocalModelConfig["purpose"] }) {
+  const state = await readTrailState();
+  const provider = input.provider || "ollama";
+  const model = input.model || "llama3.2:3b";
+  const purpose = input.purpose || "watchers";
+  const installCommand = provider === "ollama" ? `ollama pull ${model}` : provider === "llama-cpp" ? `huggingface-cli download ${model}` : "built-in local-rule-engine";
+  const existing = state.localModels.find((item) => item.provider === provider && item.model === model && item.purpose === purpose);
+  const record: LocalModelConfig = { id: existing?.id || id("model"), provider, model, purpose, installCommand, status: "configured", updatedAt: now(), downloadedAt: existing?.downloadedAt };
+  state.localModels = [record, ...state.localModels.filter((item) => item.id !== record.id)];
+  state.settings.localAiModel = model;
+  await appendEvent(state, "connector.model", `Local model lane configured: ${provider}/${model} for ${purpose}.`);
+  return writeTrailState(state);
+}
+
+export async function markLocalModelDownloaded(input: { id?: string; model?: string }) {
+  const state = await readTrailState();
+  let record = input.id ? state.localModels.find((item) => item.id === input.id) : state.localModels.find((item) => item.model === input.model);
+  if (!record) {
+    state.localModels.unshift({ id: id("model"), provider: "local-rule-engine", model: input.model || "local-rule-engine", purpose: "watchers", installCommand: "built-in local-rule-engine", status: "ready", downloadedAt: now(), updatedAt: now() });
+    record = state.localModels[0];
+  } else {
+    record.status = "ready";
+    record.downloadedAt = now();
+    record.updatedAt = now();
+  }
+  await appendEvent(state, "connector.model_ready", `Local model marked ready: ${record.model}.`);
+  return writeTrailState(state);
+}
+
+export async function configureTool(input: { name?: string; type?: ToolConnectorConfig["type"]; notes?: string; status?: ConnectorStatus }) {
+  const state = await readTrailState();
+  const tool: ToolConnectorConfig = { id: id("tool"), name: input.name || "Trail automation tool", type: input.type || "automation", status: input.status || "configured", notes: input.notes || "Configured from the Phase 1 connector surface.", updatedAt: now() };
+  state.tools.unshift(tool);
+  await appendEvent(state, "connector.tool", `Tool connector added: ${tool.name}.`);
+  return writeTrailState(state);
+}
+
 export function searchTrailState(state: TrailState, query = "") {
   const q = query.trim().toLowerCase();
   if (!q) return { mail: state.mail.slice(0, 20), drafts: state.drafts.slice(0, 10), contacts: state.contacts.slice(0, 20), actions: state.actions.slice(0, 20) };
@@ -471,7 +619,12 @@ export async function seedPlatformData() {
     if (!exists) state = await createMail(sample);
   }
   state = await readTrailState();
-  await appendEvent(state, "platform.seeded", "Platform inbox, graph, contacts, drafts, and action queue seeded.");
+  if (!state.domainHost) state = await configureDomainHost({ provider: "cloudflare", domain: state.domain?.domain || "yourdomain.com" });
+  if (!state.receiver) state = await configureDomainReceiver({ mode: "cloudflare-email-routing", targetAddress: state.aliases[0]?.address });
+  if (!state.gmail) state = await configureGmailConnector({});
+  if (!state.localModels.length) state = await configureLocalModel({ provider: "local-rule-engine", model: "local-rule-engine", purpose: "watchers" });
+  state = await readTrailState();
+  await appendEvent(state, "platform.seeded", "Platform inbox, graph, contacts, drafts, connector lanes, and action queue seeded.");
   return writeTrailState(state);
 }
 
@@ -495,6 +648,9 @@ export function publicStatus(state: TrailState) {
       events: state.events.length,
       graphNodes: state.graph.nodes.length,
       graphEdges: state.graph.edges.length,
+      localModels: state.localModels.length,
+      tools: state.tools.length,
+      connectors: [state.domainHost, state.receiver, state.gmail, ...state.localModels, ...state.tools].filter(Boolean).length,
     },
     updatedAt: state.updatedAt,
   };
@@ -513,6 +669,13 @@ export function platformSummary(state: TrailState, query = "") {
     unread,
     priority,
     settings: state.settings,
+    connectors: {
+      domainHost: state.domainHost,
+      receiver: state.receiver,
+      gmail: state.gmail,
+      localModels: state.localModels,
+      tools: state.tools,
+    },
     aliases: state.aliases,
     watchers: state.watchers,
     mail: state.mail,

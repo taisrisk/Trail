@@ -22,12 +22,21 @@ type WatcherRecord = { id: string; name: string; rule: string; actions: string[]
 type MailRecord = { id: string; from: string; to: string; subject: string; body: string; bodyPreview: string; tags: string[]; status: string; folder: MailFolder; unread: boolean; importance: "low" | "normal" | "high"; receivedAt: string };
 type QueueAction = { id: string; type: string; status: string; title: string; detail: string; createdAt: string };
 type TrailEvent = { id: string; type: string; message: string; at: string };
+type ConnectorStatus = "not-started" | "configured" | "connected" | "syncing" | "ready" | "error";
+type Connectors = {
+  domainHost?: { provider: string; domain: string; nameservers: string[]; records: { type: string; host: string; value: string; status: ConnectorStatus }[]; status: ConnectorStatus; updatedAt: string };
+  receiver?: { mode: string; targetAddress: string; webhookPath: string; inboundSecretRef: string; status: ConnectorStatus; updatedAt: string };
+  gmail?: { clientIdRef: string; tokenRef: string; scopes: string[]; historyId?: string; syncState: ConnectorStatus; lastScrapeAt?: string; imported: number; updatedAt: string };
+  localModels: { id: string; provider: string; model: string; purpose: string; installCommand: string; status: ConnectorStatus; updatedAt: string; downloadedAt?: string }[];
+  tools: { id: string; name: string; type: string; status: ConnectorStatus; notes: string; updatedAt: string }[];
+};
 
 type Platform = {
   status: Status;
   folders: Record<string, number>;
   unread: number;
   priority: number;
+  connectors: Connectors;
   aliases: AliasRecord[];
   watchers: WatcherRecord[];
   mail: MailRecord[];
@@ -129,6 +138,21 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
     void run("mail", () => api("/api/node/messages", { method: "POST", body: JSON.stringify({ from: mailFrom, to: liveAddress, subject: mailSubject, body: mailBody, tags: ["phase-1", "local-import"] }) }).then(() => undefined));
   }
 
+  function connect(action: string, payload: Record<string, unknown> = {}) {
+    void run(action, () => api("/api/connectors", { method: "POST", body: JSON.stringify({ action, ...payload }) }).then(() => undefined));
+  }
+
+  function autoWireEverything() {
+    void run("auto-wire", async () => {
+      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "domain-host", provider: "cloudflare", domain }) });
+      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "domain-receiver", mode: mode === "sovereign-mx" ? "sovereign-smtp" : "cloudflare-email-routing", targetAddress: liveAddress }) });
+      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "gmail-oauth", clientIdRef: "GOOGLE_CLIENT_ID", tokenRef: "GOOGLE_REFRESH_TOKEN" }) });
+      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "gmail-scrape", limit: 5 }) });
+      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "local-model", provider: "ollama", model: "llama3.2:3b", purpose: "watchers" }) });
+      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "tool", name: "Local approval queue", type: "automation", notes: "Draft-only external actions with human approval gates." }) });
+    });
+  }
+
   return (
     <main className="natural-page relative min-h-screen overflow-hidden px-4 py-5 text-white md:px-7">
       <div className="forest-depth" />
@@ -169,6 +193,7 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
                   <button onClick={() => void run("seed", () => api("/api/platform", { method: "POST", body: JSON.stringify({ action: "seed-platform" }) }).then(() => undefined))} className="soft-glass-button">Seed working local data</button>
                   <Link href="/mail" className="soft-glass-button ghost">Open redesigned mail</Link>
                   <button onClick={() => void refresh()} className="soft-glass-button ghost">Refresh node</button>
+                  <button onClick={autoWireEverything} className="soft-glass-button">Auto-wire remaining connectors</button>
                 </div>
               </div>
               <div className="rounded-[1.7rem] border border-white/10 bg-black/24 p-5">
@@ -189,6 +214,7 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
             <Metric label="watchers" value={data?.status.counts.watchers ?? "—"} note="local rules with approval" />
             <Metric label="queued" value={openActions} note="actions waiting on you" />
             <Metric label="graph" value={data?.graph.nodes.length ?? "—"} note={`${data?.graph.edges.length || 0} entity links`} />
+            <Metric label="connectors" value={data?.status.counts.connectors ?? "—"} note="domain, Gmail, models, tools" />
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,.95fr)]">
@@ -213,6 +239,33 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
               <div className="flex items-center justify-between"><div><p className="section-kicker">Test lane</p><h2 className="mt-2 text-3xl font-semibold tracking-[-0.055em]">Import mail</h2></div><Badge tone="cyan">vault write</Badge></div>
               <form onSubmit={importMail} className="mt-5 grid gap-3"><Field label="From"><input className={input} value={mailFrom} onChange={(e) => setMailFrom(e.target.value)} /></Field><Field label="Subject"><input className={input} value={mailSubject} onChange={(e) => setMailSubject(e.target.value)} /></Field><Field label="Body"><textarea className={`${input} min-h-32`} value={mailBody} onChange={(e) => setMailBody(e.target.value)} /></Field><button disabled={busy === "mail"} className="rounded-2xl bg-white px-4 py-3 font-semibold text-black disabled:opacity-50">Import and classify</button></form>
               <div className="mt-5 grid grid-cols-4 gap-2">{topFolders.map((item) => <div key={item.folder} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3"><p className="text-xl font-semibold">{item.count}</p><p className="text-[10px] uppercase tracking-[0.18em] text-white/35">{item.folder}</p></div>)}</div>
+            </Shell>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-4">
+            <Shell className="rounded-[2rem] p-5">
+              <div className="flex items-center justify-between gap-3"><div><p className="section-kicker">Domain hoster</p><h2 className="mt-2 text-xl font-semibold">Main domain connector</h2></div><Badge tone={data?.connectors.domainHost ? "emerald" : "amber"}>{data?.connectors.domainHost?.status || "needed"}</Badge></div>
+              <p className="mt-3 text-sm leading-6 text-white/50">Cloudflare/registrar DNS plan with MX, SPF, DKIM, DMARC, and dashboard CNAME records.</p>
+              <button onClick={() => connect("domain-host", { provider: "cloudflare", domain })} className="mt-4 w-full rounded-2xl bg-white px-4 py-3 font-semibold text-black">Generate DNS host records</button>
+              <div className="mt-4 space-y-2">{data?.connectors.domainHost?.records.slice(0, 4).map((record) => <p key={`${record.type}-${record.host}`} className="truncate rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2 text-xs text-white/55">{record.type} {record.host} → {record.value}</p>)}</div>
+            </Shell>
+            <Shell className="rounded-[2rem] p-5">
+              <div className="flex items-center justify-between gap-3"><div><p className="section-kicker">Receiver</p><h2 className="mt-2 text-xl font-semibold">Domain receiver</h2></div><Badge tone={data?.connectors.receiver ? "emerald" : "amber"}>{data?.connectors.receiver?.status || "needed"}</Badge></div>
+              <p className="mt-3 text-sm leading-6 text-white/50">Inbound path for Cloudflare Email Routing, Gmail IMAP/OAuth, relay webhook, or sovereign SMTP.</p>
+              <button onClick={() => connect("domain-receiver", { mode: mode === "sovereign-mx" ? "sovereign-smtp" : "cloudflare-email-routing", targetAddress: liveAddress })} className="mt-4 w-full rounded-2xl bg-emerald-100 px-4 py-3 font-semibold text-black">Configure receiver</button>
+              <p className="mt-4 break-all text-xs text-white/42">{data?.connectors.receiver ? `${data.connectors.receiver.mode} → ${data.connectors.receiver.targetAddress}` : "No receiver wired yet."}</p>
+            </Shell>
+            <Shell className="rounded-[2rem] p-5">
+              <div className="flex items-center justify-between gap-3"><div><p className="section-kicker">Gmail OAuth</p><h2 className="mt-2 text-xl font-semibold">History scrape lane</h2></div><Badge tone={data?.connectors.gmail?.syncState === "ready" ? "emerald" : "amber"}>{data?.connectors.gmail?.syncState || "needed"}</Badge></div>
+              <p className="mt-3 text-sm leading-6 text-white/50">Stores only secret refs, then imports history records into the local vault/index path.</p>
+              <div className="mt-4 grid gap-2"><button onClick={() => connect("gmail-oauth", { clientIdRef: "GOOGLE_CLIENT_ID", tokenRef: "GOOGLE_REFRESH_TOKEN" })} className="rounded-2xl bg-white px-4 py-3 font-semibold text-black">Connect OAuth refs</button><button onClick={() => connect("gmail-scrape", { limit: 5 })} className="rounded-2xl border border-white/12 bg-white/[0.05] px-4 py-3 font-semibold text-white">Scrape Gmail history</button></div>
+              <p className="mt-3 text-xs text-white/42">Imported: {data?.connectors.gmail?.imported ?? 0} · last {time(data?.connectors.gmail?.lastScrapeAt)}</p>
+            </Shell>
+            <Shell className="rounded-[2rem] p-5">
+              <div className="flex items-center justify-between gap-3"><div><p className="section-kicker">Local model + tools</p><h2 className="mt-2 text-xl font-semibold">AI runner</h2></div><Badge tone={data?.connectors.localModels?.length ? "emerald" : "amber"}>{data?.connectors.localModels?.[0]?.status || "needed"}</Badge></div>
+              <p className="mt-3 text-sm leading-6 text-white/50">Ollama/llama.cpp model setup commands plus automation tools for draft-only mail actions.</p>
+              <div className="mt-4 grid gap-2"><button onClick={() => connect("local-model", { provider: "ollama", model: "llama3.2:3b", purpose: "watchers" })} className="rounded-2xl bg-white px-4 py-3 font-semibold text-black">Setup Ollama model</button><button onClick={() => connect("model-downloaded", { model: data?.connectors.localModels?.[0]?.model || "local-rule-engine" })} className="rounded-2xl border border-white/12 bg-white/[0.05] px-4 py-3 font-semibold text-white">Mark model ready</button></div>
+              <p className="mt-3 break-all text-xs text-white/42">{data?.connectors.localModels?.[0]?.installCommand || "No local model selected."}</p>
             </Shell>
           </div>
 

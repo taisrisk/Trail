@@ -24,6 +24,7 @@ for (const path of [
   "/api/platform",
   "/api/pass/status",
   "/api/pass/items",
+  "/api/connectors",
   "/install/trail-install.cmd",
   "/install/trail-install.sh",
 ]) {
@@ -36,6 +37,13 @@ await check("/api/node/watchers", { method: "POST", headers: { "Content-Type": "
 await check("/api/node/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from: "smoke@example.com", to: "inbox@yourdomain.com", subject: "Smoke invoice package delay", body: "This verifies inbox, timeline, knowledge graph, watcher matching, and action queue.", tags: ["smoke", "invoice", "package"] }) });
 await check("/api/platform", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "seed-platform" }) });
 await check("/api/pass/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: `Smoke vault ${Date.now()}`, username: "tai", origin: "https://trail.local", tags: ["smoke"] }) });
+await check("/api/connectors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "domain-host", provider: "cloudflare", domain: "yourdomain.com" }) });
+await check("/api/connectors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "domain-receiver", mode: "cloudflare-email-routing", targetAddress: "inbox@yourdomain.com" }) });
+await check("/api/connectors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "gmail-oauth", clientIdRef: "GOOGLE_CLIENT_ID", tokenRef: "GOOGLE_REFRESH_TOKEN" }) });
+await check("/api/connectors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "gmail-scrape", limit: 2 }) });
+await check("/api/connectors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "local-model", provider: "ollama", model: "llama3.2:3b", purpose: "watchers" }) });
+await check("/api/connectors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "model-downloaded", model: "llama3.2:3b" }) });
+await check("/api/connectors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "tool", name: "Smoke tool", type: "automation", notes: "Smoke-tested tool connector" }) });
 
 const platform = await check("/api/platform");
 const pass = await check("/api/pass/status");
@@ -51,6 +59,9 @@ console.log(JSON.stringify({
   contacts: platform.contacts?.length,
   graphNodes: platform.graph?.nodes?.length,
   actions: platform.actions?.length,
+  connectors: platform.status?.counts?.connectors,
+  gmailImported: platform.connectors?.gmail?.imported,
+  localModels: platform.connectors?.localModels?.length,
   passItems: pass.counts?.items,
   plaintextSecretsReturned: pass.security?.plaintextSecretsReturned,
 }, null, 2));

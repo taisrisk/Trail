@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "trail-node": ["./packages/trail-node/src/index.ts"]
     }
   },
   "include": [

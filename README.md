@@ -14,7 +14,63 @@ Trail is not trying to be another hosted inbox. The goal is bigger:
 
 ## Status
 
-Trail is currently an early open-source MVP scaffold/prototype. The repository contains a working Next.js product UI, mutable local JSON-backed APIs, a standalone local node smoke server, installer scripts, Erme Pass local encrypted item storage, demo inbox/watchers/knowledge graph/action queue flows, and Phase 1 connector lanes for domain hosting, domain receiving, Gmail OAuth/history import, local model setup, and tool registration. Real SMTP receiving, IMAP sync against live accounts, production-grade encryption review, DNS automation with provider credentials, browser-extension autofill, and mobile clients are still planned modules.
+Trail is currently a functional local-first email OS prototype. Below is a detailed breakdown of what is currently implemented (done) and what is planned (remaining) in the repository:
+
+### Done (Implemented & Verified)
+*   **Next.js Workspace UI & Surfaces:**
+    *   `/` — Landing page with BYK/local-first product pitch.
+    *   `/mail` — Redesigned client workspace combining classic inbox, thread-style messages, personal knowledge base, timeline logs, and draft editor.
+    *   `/dashboard` — Live local node controller to configure setup state, aliases, watchers, model sync, and tool registrations.
+    *   `/pass` — Erme Pass local credential manager UI with generator, device pairing list, and vault view.
+    *   `/install` — Installation portal showing macOS/Linux and Windows shell script commands.
+*   **Local Node & Storage Engine:**
+    *   Standalone local node server (`scripts/trail-local-server.mjs`) on port 8787.
+    *   Dedicated `trail-node` workspace package (`packages/trail-node/`) with all backend storage, encryption, and parser logic.
+    *   SQLite metadata database (`~/.trail/config/trail.db`) replacing the old JSON file, with automatic migration from `trail-state.json`.
+    *   Event logging audit trail for setups, imports, actions, and connector states.
+*   **Mail Vault Encryption:**
+    *   Row-level AES-256-GCM envelope encryption for sensitive fields (subject, addresses, tags) in the SQLite database.
+    *   Encrypted blob store under `~/.trail/vault/` for raw email bodies and attachments.
+    *   Key derivation from user password using `scrypt`, with recovery phrase flow.
+    *   Local-dev auto-unlock mode using a machine key at `~/.trail/keys/local-device.key`.
+    *   Unlock/lock API endpoints and vault state tracking.
+*   **Mailbox Import Parser:**
+    *   Pure-JS parser for EML, Mbox, and Maildir formats (`packages/trail-node/src/parser.ts`).
+    *   MIME header decoding (Quoted-Printable, Base64, encoded words).
+*   **Erme Pass Vault Security:**
+    *   Durable JSON vault storage with real local envelope encryption using `aes-256-gcm` and a key generated at `~/.erme/pass/keys/local-device.key`.
+    *   API implementation (`src/lib/server/pass-store.ts`) that redacts plaintext secrets when listing vault items.
+*   **Connector Plan Generation:**
+    *   Domain hosting records generator mapping out MX, SPF, DKIM, DMARC, and CNAME configurations.
+    *   Domain receiver configuration supporting routing modes (Quick Domain, Relay, Sovereign MX).
+    *   Gmail OAuth references setup and simulated history import lane.
+*   **AI Watchers & Gated Action Queue:**
+    *   Basic token-matching rules engine running watchers on incoming mail.
+    *   Human-gated Action Queue (approval queue) that intercepts watcher actions (like draft replies) and waits for user approval/dismissal before execution (marking draft reply as ready to queue for sending).
+*   **Testing & CI Verification:**
+    *   `docker-smoke.mjs` script verifying all page routes, node state endpoints, database additions, and connector status changes.
+    *   GitHub Actions CI workflow for linting and compilation builds.
+
+### Remaining (Planned / In Development)
+*   **Live SMTP, IMAP & Sync:**
+    *   Real IMAP and Gmail API sync client pulling active mailboxes into the local node.
+    *   Signed payload webhook receiver for VPS relay endpoints.
+    *   Outbound SMTP adapter with DKIM signature calculation.
+    *   Outbound sending constraints, rate limits, warm-up policies, and bounce handlers.
+*   **Live DNS & Domain Automation:**
+    *   Live DNS verification check.
+    *   Cloudflare API token integration for automated DNS record configuration.
+    *   Cloudflare Tunnel dashboard health checks.
+*   **AI Watcher Runner:**
+    *   Ollama and `llama.cpp` local integrations for running models locally.
+    *   Structured watcher rule language.
+    *   Sandboxed action execution environment.
+*   **Encrypted Search & Backup:**
+    *   Encrypted local search index strategy.
+    *   Encrypted backup/restore.
+*   **Sovereign SMTP Server:**
+    *   SMTP receiver server to accept MX connections directly on residential or VPS hosts.
+    *   Local Rspamd/SpamAssassin integration.
 
 ## Current working surfaces
 
@@ -220,6 +276,16 @@ Local modules:
 
 ```text
 Trail/
+  packages/
+    trail-node/
+      src/
+        index.ts        — re-exports all backend APIs
+        store.ts        — SQLite database, state, CRUD, seed data
+        crypto.ts       — AES-256-GCM encryption, key derivation
+        blob-store.ts   — encrypted blob read/write under ~/.trail/vault/
+        parser.ts       — EML, Mbox, Maildir parser
+      package.json
+      tsconfig.json
   docs/
     ARCHITECTURE.md
     BYK_MAIL_DESIGN.md
@@ -227,25 +293,46 @@ Trail/
   src/
     app/
       api/
-        abuse/
-        burn/
-        connectors/
-        domain-setup/
-        local-node/
-        routing-modes/
-        security/
-        vault/
-        watchers/
+        connectors/     — domain host, receiver, Gmail, models, tools
+        node/           — setup, aliases, watchers, messages, encryption, unlock, status, actions
+        pass/           — Erme Pass vault CRUD
+        platform/       — unified platform summary + mutations
+        abuse/          — abuse control blueprint
+        burn/           — crypto-burn policy blueprint
+        domain-setup/   — DNS onboarding blueprint
+        local-node/     — local node layout blueprint
+        routing-modes/  — routing mode descriptions
+        security/       — security layer docs
+        vault/          — vault info
+        watchers/       — watcher config docs
+      mail/page.tsx
+      dashboard/page.tsx
+      pass/page.tsx
+      install/page.tsx
+      ecosystem/page.tsx
       page.tsx
       layout.tsx
       globals.css
     components/
-      sections/
+      trail-workspace.tsx
+      control-dashboard.tsx
+      pass-dashboard.tsx
+      single-slab-page.tsx
+      copy-script-button.tsx
       ui/
     lib/
+      server/
+        trail-store.ts  — re-exports trail-node
+        pass-store.ts   — Erme Pass vault logic
+        api.ts          — shared API helpers
       byk-mail.ts
       crypto-blueprint.ts
+      erme-ecosystem.ts
+      install-scripts.ts
       trail-core.ts
+  scripts/
+    trail-local-server.mjs
+    docker-smoke.mjs
 ```
 
 ## Current UI surfaces
@@ -297,10 +384,10 @@ These are intentionally simple right now so the repository has clean places to r
 - [x] local audit/event log
 - [x] mutable inbox/aliases/watchers/drafts/actions/contact graph state
 - [x] connector state for domain hoster, receiver, Gmail, local models, and tools
-- [ ] create dedicated `trail-node` package
-- [ ] SQLite metadata database
-- [ ] encrypted blob store
-- [ ] normalized local mailbox import format
+- [x] create dedicated `trail-node` package
+- [x] SQLite metadata database (`~/.trail/config/trail.db`)
+- [x] encrypted blob store (`~/.trail/vault/*.blob`)
+- [x] normalized local mailbox import parser (EML, Mbox, Maildir)
 
 ### Phase 2 — Domain setup wizard
 
@@ -323,19 +410,19 @@ These are intentionally simple right now so the repository has clean places to r
 
 ### Phase 4 — Encryption and vault
 
-- [ ] Argon2id key derivation
-- [ ] XChaCha20-Poly1305 or AES-GCM envelope encryption
+- [x] scrypt key derivation from user password
+- [x] AES-256-GCM envelope encryption (row-level for mail/drafts/contacts)
 - [ ] encrypted search index strategy
-- [ ] recovery phrase flow
+- [x] recovery phrase flow
 - [ ] encrypted backup/restore
 
 ### Phase 5 — Local AI watchers
 
 - [ ] Ollama integration
 - [ ] watcher rule language
-- [ ] draft-only default for external actions
+- [x] draft-only default for external actions
 - [ ] calendar/order extraction
-- [ ] approval queue
+- [x] approval queue
 - [ ] action sandbox
 
 ### Phase 6 — Outbound sending

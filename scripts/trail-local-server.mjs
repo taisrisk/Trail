@@ -23,6 +23,8 @@ import {
   getTrailHome
 ,  verifyAndProcessWebhook
 ,  startImapIdle
+,  startSovereignSMTPServer
+,  startDisposableTunnel
 } from "../packages/trail-node/src/index.ts";
 
 
@@ -74,6 +76,17 @@ let imapCleanup = null;
         return send(res, 200, { success: true, message: "IMAP IDLE stopped" });
       }
       return send(res, 200, { success: true, message: "IMAP IDLE not running" });
+    }
+
+
+    if (req.method === "POST" && url.pathname === "/api/ingress/trycloudflare") {
+      try {
+        const { url } = await startDisposableTunnel(8787);
+        return send(res, 200, { success: true, url });
+      } catch (err) {
+        console.error("TryCloudflare error:", err.message);
+        return send(res, 500, { error: err.message });
+      }
     }
 
     if (req.method === "GET" && url.pathname === "/api/ingress/health") {
@@ -244,6 +257,12 @@ let imapCleanup = null;
     return send(res, 500, { error: error instanceof Error ? error.message : String(error) });
   }
 });
+
+
+// Start inbound Sovereign SMTP if configured in environment
+if (process.env.TRAIL_START_SOVEREIGN_SMTP === "true") {
+  startSovereignSMTPServer(process.env.TRAIL_SMTP_INBOUND_PORT ? parseInt(process.env.TRAIL_SMTP_INBOUND_PORT, 10) : 2525).catch(console.error);
+}
 
 server.listen(port, "127.0.0.1", () => {
   console.log(`Trail local server running at http://127.0.0.1:${port}`);

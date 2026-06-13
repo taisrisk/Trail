@@ -84,9 +84,6 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
   const [aliasLabel, setAliasLabel] = useState("Public inbox");
   const [watcherName, setWatcherName] = useState("Money + orders guard");
   const [watcherRule, setWatcherRule] = useState("Flag invoices, payment failures, receipts, shipping delays, refunds, and deadlines.");
-  const [mailFrom, setMailFrom] = useState("client@zrorisc.example");
-  const [mailSubject, setMailSubject] = useState("Invoice deadline and package update");
-  const [mailBody, setMailBody] = useState("Payment is due Friday and the package delivery changed again. Trail should classify this, add it to the timeline, and queue a draft reply.");
 
   const liveAddress = useMemo(() => data?.aliases[0]?.address || `hello@${data?.status.domain?.domain || domain}`, [data, domain]);
   const openActions = data?.actions.filter((action) => action.status === "queued").length || 0;
@@ -133,10 +130,7 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
     void run("watcher", () => api("/api/node/watchers", { method: "POST", body: JSON.stringify({ name: watcherName, rule: watcherRule, actions: ["scan", "flag", "draft_reply", "order_update"], humanApprovalRequired: true }) }).then(() => undefined));
   }
 
-  function importMail(e: FormEvent) {
-    e.preventDefault();
-    void run("mail", () => api("/api/node/messages", { method: "POST", body: JSON.stringify({ from: mailFrom, to: liveAddress, subject: mailSubject, body: mailBody, tags: ["phase-1", "local-import"] }) }).then(() => undefined));
-  }
+
 
 
 
@@ -157,6 +151,25 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
     }
   };
 
+
+  const startDisposableTunnel = async () => {
+    try {
+      const response = await fetch("http://127.0.0.1:8787/api/ingress/trycloudflare", { method: "POST" });
+      const data = await response.json();
+      if (data.success) {
+        alert(`Disposable TryCloudflare tunnel started! Your public URL is: ${data.url}`);
+
+        // update the receiver with the newly found tunnel URL
+        await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "domain-receiver", mode: "cloudflare-email-routing", targetAddress: data.url }) });
+        refresh().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+      } else {
+        alert(`Failed to start disposable tunnel: ${data.error}`);
+      }
+    } catch (err: unknown) {
+      alert(`Error connecting to local server: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
   function connectDomainHost() {
     void run("domain-host", async () => {
       const token = window.prompt("Enter your Cloudflare API token (leave blank to just generate records):");
@@ -166,17 +179,6 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
 
   function connect(action: string, payload: Record<string, unknown> = {}) {
     void run(action, () => api("/api/connectors", { method: "POST", body: JSON.stringify({ action, ...payload }) }).then(() => undefined));
-  }
-
-  function autoWireEverything() {
-    void run("auto-wire", async () => {
-      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "domain-host", provider: "cloudflare", domain }) });
-      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "domain-receiver", mode: mode === "sovereign-mx" ? "sovereign-smtp" : "cloudflare-email-routing", targetAddress: liveAddress }) });
-      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "gmail-oauth", clientIdRef: "GOOGLE_CLIENT_ID", tokenRef: "GOOGLE_REFRESH_TOKEN" }) });
-      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "gmail-scrape", limit: 5 }) });
-      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "local-model", provider: "ollama", model: "llama3.2:3b", purpose: "watchers" }) });
-      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "tool", name: "Local approval queue", type: "automation", notes: "Draft-only external actions with human approval gates." }) });
-    });
   }
 
   return (
@@ -219,7 +221,7 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
                   <button onClick={() => void run("seed", () => api("/api/platform", { method: "POST", body: JSON.stringify({ action: "seed-platform" }) }).then(() => undefined))} className="soft-glass-button">Seed working local data</button>
                   <Link href="/mail" className="soft-glass-button ghost">Open redesigned mail</Link>
                   <button onClick={() => void refresh()} className="soft-glass-button ghost">Refresh node</button>
-                  <button onClick={autoWireEverything} className="soft-glass-button">Auto-wire remaining connectors</button>
+
                 </div>
               </div>
               <div className="rounded-[1.7rem] border border-white/10 bg-black/24 p-5">
@@ -263,7 +265,7 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
 
             <Shell className="rounded-[2rem] p-5 md:p-6">
               <div className="flex items-center justify-between"><div><p className="section-kicker">Test lane</p><h2 className="mt-2 text-3xl font-semibold tracking-[-0.055em]">Import mail</h2></div><Badge tone="cyan">vault write</Badge></div>
-              <form onSubmit={importMail} className="mt-5 grid gap-3"><Field label="From"><input className={input} value={mailFrom} onChange={(e) => setMailFrom(e.target.value)} /></Field><Field label="Subject"><input className={input} value={mailSubject} onChange={(e) => setMailSubject(e.target.value)} /></Field><Field label="Body"><textarea className={`${input} min-h-32`} value={mailBody} onChange={(e) => setMailBody(e.target.value)} /></Field><button disabled={busy === "mail"} className="rounded-2xl bg-white px-4 py-3 font-semibold text-black disabled:opacity-50">Import and classify</button></form>
+
               <div className="mt-5 grid grid-cols-4 gap-2">{topFolders.map((item) => <div key={item.folder} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3"><p className="text-xl font-semibold">{item.count}</p><p className="text-[10px] uppercase tracking-[0.18em] text-white/35">{item.folder}</p></div>)}</div>
             </Shell>
           </div>
@@ -282,6 +284,8 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
 
               <p className="mt-4 break-all text-xs text-white/42">{data?.connectors.receiver ? `${data.connectors.receiver.mode} → ${data.connectors.receiver.targetAddress}` : "No receiver wired yet."}</p>
               <button onClick={checkTunnelHealth} className="mt-4 w-full rounded-2xl border border-white/12 bg-white/[0.05] px-4 py-3 font-semibold text-white">Check end-to-end tunnel health</button>
+              <button onClick={startDisposableTunnel} className="mt-4 w-full rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 font-semibold text-emerald-400">Generate disposable TryCloudflare Tunnel</button>
+
 
             </Shell>
             <Shell className="rounded-[2rem] p-5">

@@ -21,6 +21,8 @@ import {
   enablePasswordEncryption,
   recoverVault,
   getTrailHome
+,  verifyAndProcessWebhook
+,  startImapIdle
 } from "../packages/trail-node/src/index.ts";
 
 
@@ -50,6 +52,34 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url || "/", `http://${req.headers.host}`);
     const state = await readTrailState();
 
+
+
+let imapCleanup = null;
+    if (req.method === "POST" && url.pathname === "/api/ingress/imap-start") {
+      const body = await parseBody(req);
+      try {
+        if (imapCleanup) imapCleanup();
+        imapCleanup = await startImapIdle({ host: body.host, port: body.port, secure: body.secure, user: body.user, pass: body.pass });
+        return send(res, 200, { success: true, message: "IMAP IDLE started" });
+      } catch (err) {
+        console.error("IMAP IDLE start failed:", err.message);
+        return send(res, 500, { error: err.message });
+      }
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/ingress/imap-stop") {
+      if (imapCleanup) {
+        imapCleanup();
+        imapCleanup = null;
+        return send(res, 200, { success: true, message: "IMAP IDLE stopped" });
+      }
+      return send(res, 200, { success: true, message: "IMAP IDLE not running" });
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/ingress/health") {
+      return send(res, 200, { ok: true, timestamp: Date.now(), service: "trail-node-ingress" });
+    }
+
     if (req.method === "GET" && ["/health", "/status"].includes(url.pathname)) {
       return send(res, 200, { ok: true, status: publicStatus(state) });
     }
@@ -70,6 +100,25 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/connectors") {
       return send(res, 200, { connectors: platformSummary(state).connectors });
+    }
+
+
+    if (req.method === "POST" && url.pathname === "/api/ingress/webhook") {
+      const signature = req.headers["x-trail-signature"];
+      const timestamp = req.headers["x-trail-timestamp"];
+
+      if (!signature || !timestamp) {
+        return send(res, 401, { error: "Missing required signature headers" });
+      }
+
+
+      try {
+        const result = await verifyAndProcessWebhook(req, Array.isArray(signature) ? signature[0] : signature, Array.isArray(timestamp) ? timestamp[0] : timestamp);
+        return send(res, 200, { success: true });
+      } catch (err) {
+        console.error("Webhook processing error:", err.message);
+        return send(res, 401, { error: err.message });
+      }
     }
 
     if (req.method === "POST" && url.pathname === "/connectors") {

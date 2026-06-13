@@ -18,6 +18,7 @@
     "trail:health": "node -e \"fetch('http://127.0.0.1:8787/health').then(r=>r.json()).then(console.log).catch(err=>{console.error(err.message); process.exit(1)})\""
   },
   "dependencies": {
+    "hono": "^4.12.25",
     "next": "16.2.7",
     "react": "19.2.4",
     "react-dom": "19.2.4"

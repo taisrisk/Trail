@@ -138,6 +138,32 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
     void run("mail", () => api("/api/node/messages", { method: "POST", body: JSON.stringify({ from: mailFrom, to: liveAddress, subject: mailSubject, body: mailBody, tags: ["phase-1", "local-import"] }) }).then(() => undefined));
   }
 
+
+
+  const checkTunnelHealth = async () => {
+    try {
+      const url = `https://tunnel.${domain}/api/ingress/health`;
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.ok) {
+          alert(`Tunnel is healthy! Local background service responded. Timestamp: ${data.timestamp}`);
+          return;
+        }
+      }
+      alert("Tunnel responded, but not with the expected local node payload.");
+    } catch (err: unknown) {
+      alert(`Tunnel check failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  function connectDomainHost() {
+    void run("domain-host", async () => {
+      const token = window.prompt("Enter your Cloudflare API token (leave blank to just generate records):");
+      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "domain-host", provider: "cloudflare", domain, token: token || undefined }) });
+    });
+  }
+
   function connect(action: string, payload: Record<string, unknown> = {}) {
     void run(action, () => api("/api/connectors", { method: "POST", body: JSON.stringify({ action, ...payload }) }).then(() => undefined));
   }
@@ -246,14 +272,17 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
             <Shell className="rounded-[2rem] p-5">
               <div className="flex items-center justify-between gap-3"><div><p className="section-kicker">Domain hoster</p><h2 className="mt-2 text-xl font-semibold">Main domain connector</h2></div><Badge tone={data?.connectors.domainHost ? "emerald" : "amber"}>{data?.connectors.domainHost?.status || "needed"}</Badge></div>
               <p className="mt-3 text-sm leading-6 text-white/50">Cloudflare/registrar DNS plan with MX, SPF, DKIM, DMARC, and dashboard CNAME records.</p>
-              <button onClick={() => connect("domain-host", { provider: "cloudflare", domain })} className="mt-4 w-full rounded-2xl bg-white px-4 py-3 font-semibold text-black">Generate DNS host records</button>
+              <button onClick={connectDomainHost} className="mt-4 w-full rounded-2xl bg-white px-4 py-3 font-semibold text-black">Generate DNS host records</button>
               <div className="mt-4 space-y-2">{data?.connectors.domainHost?.records.slice(0, 4).map((record) => <p key={`${record.type}-${record.host}`} className="truncate rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2 text-xs text-white/55">{record.type} {record.host} → {record.value}</p>)}</div>
             </Shell>
             <Shell className="rounded-[2rem] p-5">
               <div className="flex items-center justify-between gap-3"><div><p className="section-kicker">Receiver</p><h2 className="mt-2 text-xl font-semibold">Domain receiver</h2></div><Badge tone={data?.connectors.receiver ? "emerald" : "amber"}>{data?.connectors.receiver?.status || "needed"}</Badge></div>
               <p className="mt-3 text-sm leading-6 text-white/50">Inbound path for Cloudflare Email Routing, Gmail IMAP/OAuth, relay webhook, or sovereign SMTP.</p>
               <button onClick={() => connect("domain-receiver", { mode: mode === "sovereign-mx" ? "sovereign-smtp" : "cloudflare-email-routing", targetAddress: liveAddress })} className="mt-4 w-full rounded-2xl bg-emerald-100 px-4 py-3 font-semibold text-black">Configure receiver</button>
+
               <p className="mt-4 break-all text-xs text-white/42">{data?.connectors.receiver ? `${data.connectors.receiver.mode} → ${data.connectors.receiver.targetAddress}` : "No receiver wired yet."}</p>
+              <button onClick={checkTunnelHealth} className="mt-4 w-full rounded-2xl border border-white/12 bg-white/[0.05] px-4 py-3 font-semibold text-white">Check end-to-end tunnel health</button>
+
             </Shell>
             <Shell className="rounded-[2rem] p-5">
               <div className="flex items-center justify-between gap-3"><div><p className="section-kicker">Gmail OAuth</p><h2 className="mt-2 text-xl font-semibold">History scrape lane</h2></div><Badge tone={data?.connectors.gmail?.syncState === "ready" ? "emerald" : "amber"}>{data?.connectors.gmail?.syncState || "needed"}</Badge></div>

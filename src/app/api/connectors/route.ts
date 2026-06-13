@@ -30,7 +30,13 @@ export async function POST(request: Request) {
     const action = String(body.action || "");
     let state;
     if (action === "domain-host") {
-      state = await configureDomainHost(body as Parameters<typeof configureDomainHost>[0]);
+      // make sure token is passed down correctly
+      const payload = {
+        provider: body.provider,
+        domain: body.domain,
+        token: body.token,
+      } as Parameters<typeof configureDomainHost>[0];
+      state = await configureDomainHost(payload);
     } else if (action === "domain-receiver") {
       state = await configureDomainReceiver(body as Parameters<typeof configureDomainReceiver>[0]);
     } else if (action === "gmail-oauth") {

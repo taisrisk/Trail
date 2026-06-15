@@ -1205,8 +1205,7 @@ export async function writeTrailState(state: TrailState) {
   }
 
   // 1. Process files asynchronously before starting the SQLite transaction to avoid event loop yields
-  const mailWithRefs = [];
-  for (const m of state.mail) {
+  const mailWithRefs = await Promise.all(state.mail.map(async (m) => {
     let bodyRef = "";
     if (m.body && key) {
       if (m.body.startsWith("blob_")) {
@@ -1215,11 +1214,10 @@ export async function writeTrailState(state: TrailState) {
         bodyRef = await writeBlob(home, m.body, key);
       }
     }
-    mailWithRefs.push({ m, bodyRef });
-  }
+    return { m, bodyRef };
+  }));
 
-  const draftsWithRefs = [];
-  for (const d of state.drafts) {
+  const draftsWithRefs = await Promise.all(state.drafts.map(async (d) => {
     let bodyRef = "";
     if (d.body && key) {
       if (d.body.startsWith("blob_")) {
@@ -1228,8 +1226,8 @@ export async function writeTrailState(state: TrailState) {
         bodyRef = await writeBlob(home, d.body, key);
       }
     }
-    draftsWithRefs.push({ d, bodyRef });
-  }
+    return { d, bodyRef };
+  }));
 
   // 2. Perform SQLite transaction synchronously
   db.exec("BEGIN TRANSACTION");

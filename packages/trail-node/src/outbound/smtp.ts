@@ -29,13 +29,18 @@ export async function sendOutboundMail(options: { to: string; subject: string; t
     },
   };
 
-  if (dkimPrivateKey) {
+
+  // TryCloudflare logic (Skip DKIM signing since we don't control the trycloudflare.com DNS root)
+  const isTryCloudflare = domain.endsWith("trycloudflare.com");
+
+  if (dkimPrivateKey && !isTryCloudflare) {
     transportConfig.dkim = {
       domainName: domain,
       keySelector: "trail",
       privateKey: dkimPrivateKey,
     };
   }
+
 
   const transporter = nodemailer.createTransport(transportConfig);
 

@@ -81,8 +81,15 @@ let imapCleanup = null;
 
     if (req.method === "POST" && url.pathname === "/api/ingress/trycloudflare") {
       try {
-        const { url } = await startDisposableTunnel(8787);
-        return send(res, 200, { success: true, url });
+        const { url: rawUrl } = await startDisposableTunnel(8787);
+        const hostName = rawUrl.replace(/^https?:\/\//, '');
+
+        // Auto-provision alias
+        await createAlias({ address: `inbox@${hostName}`, destination: "local-vault", label: "TryCloudflare Ingress" });
+        await setupDomain({ domain: hostName, mode: "quick-domain", catchAll: true });
+        await configureDomainReceiver({ mode: "relay-webhook", targetAddress: rawUrl });
+
+        return send(res, 200, { success: true, url: rawUrl, email: `inbox@${hostName}` });
       } catch (err) {
         console.error("TryCloudflare error:", err.message);
         return send(res, 500, { error: err.message });

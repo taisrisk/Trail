@@ -154,14 +154,13 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
 
   const startDisposableTunnel = async () => {
     try {
-      const response = await fetch("http://127.0.0.1:8787/api/ingress/trycloudflare", { method: "POST" });
-      const data = await response.json();
+      const data = await api<{ success: boolean; url: string; email: string; error?: string }>("/api/node/trycloudflare", { method: "POST" });
       if (data.success) {
-        alert(`Disposable TryCloudflare tunnel started! Your public URL is: ${data.url}`);
 
-        // update the receiver with the newly found tunnel URL
-        await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "domain-receiver", mode: "cloudflare-email-routing", targetAddress: data.url }) });
+        alert(`Disposable TryCloudflare tunnel started!\n\nYour temporary email address is: ${data.email}\n\nMail sent to this address will be received by your local node directly.`);
+
         refresh().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+
       } else {
         alert(`Failed to start disposable tunnel: ${data.error}`);
       }
@@ -200,12 +199,10 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
     if (!host || !user || !pass) return;
 
     try {
-      const response = await fetch("http://127.0.0.1:8787/api/ingress/imap-start", {
+      const data = await api<{ success: boolean; error?: string }>("/api/node/imap-start", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ host, port: 993, secure: true, user, pass })
       });
-      const data = await response.json();
       if (data.success) {
         alert("IMAP IDLE listener successfully started on background node.");
       } else {

@@ -1695,7 +1695,7 @@ function dnsForDomain(domain: string, receiver = "Cloudflare Email Routing") {
     { type: "MX" as const, host: "@", value: receiver === "Sovereign SMTP" ? `10 mx.${domain}` : "10 route1.mx.cloudflare.net", priority: 10, status: "configured" as ConnectorStatus },
     { type: "TXT" as const, host: "@", value: "v=spf1 include:_spf.google.com include:_spf.mx.cloudflare.net ~all", status: "configured" as ConnectorStatus },
     { type: "TXT" as const, host: "_dmarc", value: `v=DMARC1; p=quarantine; rua=mailto:dmarc@${domain}`, status: "configured" as ConnectorStatus },
-    { type: "TXT" as const, host: "trail._domainkey", value: "v=DKIM1; k=rsa; p=GENERATE_DKIM_KEY_IN_PRODUCTION", status: "not-started" as ConnectorStatus },
+    { type: "TXT" as const, host: "trail._domainkey", value: `v=DKIM1; k=rsa; p=${process.env.TRAIL_DKIM_PUBLIC_KEY || ""}`, status: "not-started" as ConnectorStatus },
     { type: "CNAME" as const, host: "trail", value: "127-0-0-1.local-trail.invalid", status: "configured" as ConnectorStatus },
   ];
 }

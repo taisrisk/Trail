@@ -86,6 +86,12 @@ export function TrailWorkspace({ initialData = null }: { initialData?: Platform 
   const [selectedId, setSelectedId] = useState(initialData?.mail[0]?.id || "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeTo, setComposeTo] = useState("");
+  const [composeSubject, setComposeSubject] = useState("");
+  const [composeBody, setComposeBody] = useState("");
+  const [composeSending, setComposeSending] = useState(false);
+
 
   async function refresh(seed = false) {
     setError("");
@@ -101,6 +107,32 @@ export function TrailWorkspace({ initialData = null }: { initialData?: Platform 
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setComposeSending(true);
+    try {
+      const response = await fetch("/api/node/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: composeTo, subject: composeSubject, body: composeBody }),
+      });
+      const resData = await response.json();
+      if (!response.ok) throw new Error(resData.error || "Failed to send");
+
+      alert("Mail sent successfully!");
+      setComposeOpen(false);
+      setComposeTo("");
+      setComposeSubject("");
+      setComposeBody("");
+      refresh(false);
+    } catch(err) {
+      alert("Error sending mail: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setComposeSending(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();
@@ -152,6 +184,26 @@ export function TrailWorkspace({ initialData = null }: { initialData?: Platform 
   }
 
   return (
+    <>
+      {composeOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <form onSubmit={handleSend} className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#08100d] p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold">New Message</h2>
+              <button type="button" onClick={() => setComposeOpen(false)} className="text-white/40 hover:text-white"><svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+            <div className="grid gap-4">
+              <input required disabled={composeSending} value={composeTo} onChange={e => setComposeTo(e.target.value)} type="email" placeholder="To:" className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/50" />
+              <input required disabled={composeSending} value={composeSubject} onChange={e => setComposeSubject(e.target.value)} type="text" placeholder="Subject:" className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/50" />
+              <textarea required disabled={composeSending} value={composeBody} onChange={e => setComposeBody(e.target.value)} rows={8} placeholder="Message body..." className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/50"></textarea>
+              <button disabled={composeSending} type="submit" className="w-full rounded-xl bg-emerald-500 px-4 py-3 font-semibold text-black transition hover:bg-emerald-400 disabled:opacity-50">
+                {composeSending ? "Sending..." : "Send via Outbound SMTP"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
     <main className="natural-page relative min-h-screen overflow-hidden px-4 py-5 text-white md:px-7">
       <div className="forest-depth" />
       <div className="ambient-fog" />
@@ -171,7 +223,13 @@ export function TrailWorkspace({ initialData = null }: { initialData?: Platform 
             <p className="mt-1 text-xs text-white/40">{data?.status.runState || "loading"} · {data?.status.domain?.mode || "quick-domain"}</p>
           </div>
 
-          <div className="mt-5 space-y-2">
+
+            <button onClick={() => setComposeOpen(true)} className="mb-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500/20 px-4 py-3 text-sm font-semibold text-emerald-400 transition hover:bg-emerald-500/30">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+              Compose
+            </button>
+
+<div className="mt-5 space-y-2">
             {folders.map((item) => (
               <button key={item} onClick={() => setFolder(item)} className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${folder === item ? "border-white/25 bg-white text-black" : "border-white/8 bg-white/[0.035] text-white/70 hover:bg-white/[0.08]"}`}>
                 <span className="capitalize">{item}</span><span className="font-semibold">{item === "inbox" ? data?.unread || 0 : data?.folders?.[item] || 0}</span>
@@ -252,5 +310,6 @@ export function TrailWorkspace({ initialData = null }: { initialData?: Platform 
         </aside>
       </div>
     </main>
+    </>
   );
 }

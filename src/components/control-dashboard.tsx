@@ -84,9 +84,6 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
   const [aliasLabel, setAliasLabel] = useState("Public inbox");
   const [watcherName, setWatcherName] = useState("Money + orders guard");
   const [watcherRule, setWatcherRule] = useState("Flag invoices, payment failures, receipts, shipping delays, refunds, and deadlines.");
-  const [mailFrom, setMailFrom] = useState("client@zrorisc.example");
-  const [mailSubject, setMailSubject] = useState("Invoice deadline and package update");
-  const [mailBody, setMailBody] = useState("Payment is due Friday and the package delivery changed again. Trail should classify this, add it to the timeline, and queue a draft reply.");
 
   const liveAddress = useMemo(() => data?.aliases[0]?.address || `hello@${data?.status.domain?.domain || domain}`, [data, domain]);
   const openActions = data?.actions.filter((action) => action.status === "queued").length || 0;
@@ -133,10 +130,7 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
     void run("watcher", () => api("/api/node/watchers", { method: "POST", body: JSON.stringify({ name: watcherName, rule: watcherRule, actions: ["scan", "flag", "draft_reply", "order_update"], humanApprovalRequired: true }) }).then(() => undefined));
   }
 
-  function importMail(e: FormEvent) {
-    e.preventDefault();
-    void run("mail", () => api("/api/node/messages", { method: "POST", body: JSON.stringify({ from: mailFrom, to: liveAddress, subject: mailSubject, body: mailBody, tags: ["phase-1", "local-import"] }) }).then(() => undefined));
-  }
+
 
 
 
@@ -157,6 +151,68 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
     }
   };
 
+
+  const startDisposableTunnel = async () => {
+    try {
+      const data = await api<{ success: boolean; url: string; email: string; error?: string }>("/api/node/trycloudflare", { method: "POST" });
+      if (data.success) {
+
+        alert(`Disposable TryCloudflare tunnel started!\n\nYour temporary email address is: ${data.email}\n\nMail sent to this address will be received by your local node directly.`);
+
+        refresh().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+
+      } else {
+        alert(`Failed to start disposable tunnel: ${data.error}`);
+      }
+    } catch (err: unknown) {
+      alert(`Error connecting to local server: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+
+  const runGmailScrape = async () => {
+    try {
+      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "gmail-scrape", limit: 50 }) });
+      alert("Gmail history sync started.");
+      refresh().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    } catch(err) {
+      alert("Gmail sync failed: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+
+  const connectOllama = async () => {
+    try {
+      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "local-model", provider: "ollama", model: "llama3.2:3b", purpose: "watchers" }) });
+      alert("Ollama configuration updated.");
+      refresh().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    } catch(err) {
+      alert("Ollama connection failed: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+
+  const startImapIdle = async () => {
+    const host = window.prompt("IMAP Host (e.g. imap.gmail.com):");
+    const user = window.prompt("IMAP User Email:");
+    const pass = window.prompt("IMAP App Password:");
+    if (!host || !user || !pass) return;
+
+    try {
+      const data = await api<{ success: boolean; error?: string }>("/api/node/imap-start", {
+        method: "POST",
+        body: JSON.stringify({ host, port: 993, secure: true, user, pass })
+      });
+      if (data.success) {
+        alert("IMAP IDLE listener successfully started on background node.");
+      } else {
+        alert("IMAP IDLE start failed: " + data.error);
+      }
+    } catch(err) {
+      alert("IMAP IDLE network failed: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
   function connectDomainHost() {
     void run("domain-host", async () => {
       const token = window.prompt("Enter your Cloudflare API token (leave blank to just generate records):");
@@ -166,17 +222,6 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
 
   function connect(action: string, payload: Record<string, unknown> = {}) {
     void run(action, () => api("/api/connectors", { method: "POST", body: JSON.stringify({ action, ...payload }) }).then(() => undefined));
-  }
-
-  function autoWireEverything() {
-    void run("auto-wire", async () => {
-      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "domain-host", provider: "cloudflare", domain }) });
-      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "domain-receiver", mode: mode === "sovereign-mx" ? "sovereign-smtp" : "cloudflare-email-routing", targetAddress: liveAddress }) });
-      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "gmail-oauth", clientIdRef: "GOOGLE_CLIENT_ID", tokenRef: "GOOGLE_REFRESH_TOKEN" }) });
-      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "gmail-scrape", limit: 5 }) });
-      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "local-model", provider: "ollama", model: "llama3.2:3b", purpose: "watchers" }) });
-      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "tool", name: "Local approval queue", type: "automation", notes: "Draft-only external actions with human approval gates." }) });
-    });
   }
 
   return (
@@ -219,7 +264,7 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
                   <button onClick={() => void run("seed", () => api("/api/platform", { method: "POST", body: JSON.stringify({ action: "seed-platform" }) }).then(() => undefined))} className="soft-glass-button">Seed working local data</button>
                   <Link href="/mail" className="soft-glass-button ghost">Open redesigned mail</Link>
                   <button onClick={() => void refresh()} className="soft-glass-button ghost">Refresh node</button>
-                  <button onClick={autoWireEverything} className="soft-glass-button">Auto-wire remaining connectors</button>
+
                 </div>
               </div>
               <div className="rounded-[1.7rem] border border-white/10 bg-black/24 p-5">
@@ -263,7 +308,7 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
 
             <Shell className="rounded-[2rem] p-5 md:p-6">
               <div className="flex items-center justify-between"><div><p className="section-kicker">Test lane</p><h2 className="mt-2 text-3xl font-semibold tracking-[-0.055em]">Import mail</h2></div><Badge tone="cyan">vault write</Badge></div>
-              <form onSubmit={importMail} className="mt-5 grid gap-3"><Field label="From"><input className={input} value={mailFrom} onChange={(e) => setMailFrom(e.target.value)} /></Field><Field label="Subject"><input className={input} value={mailSubject} onChange={(e) => setMailSubject(e.target.value)} /></Field><Field label="Body"><textarea className={`${input} min-h-32`} value={mailBody} onChange={(e) => setMailBody(e.target.value)} /></Field><button disabled={busy === "mail"} className="rounded-2xl bg-white px-4 py-3 font-semibold text-black disabled:opacity-50">Import and classify</button></form>
+
               <div className="mt-5 grid grid-cols-4 gap-2">{topFolders.map((item) => <div key={item.folder} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3"><p className="text-xl font-semibold">{item.count}</p><p className="text-[10px] uppercase tracking-[0.18em] text-white/35">{item.folder}</p></div>)}</div>
             </Shell>
           </div>
@@ -282,18 +327,22 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
 
               <p className="mt-4 break-all text-xs text-white/42">{data?.connectors.receiver ? `${data.connectors.receiver.mode} → ${data.connectors.receiver.targetAddress}` : "No receiver wired yet."}</p>
               <button onClick={checkTunnelHealth} className="mt-4 w-full rounded-2xl border border-white/12 bg-white/[0.05] px-4 py-3 font-semibold text-white">Check end-to-end tunnel health</button>
+              <button onClick={startDisposableTunnel} className="mt-4 w-full rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 font-semibold text-emerald-400">Generate disposable TryCloudflare Tunnel</button>
+              <button onClick={startImapIdle} className="mt-4 w-full rounded-2xl border border-white/12 bg-white/[0.05] px-4 py-3 font-semibold text-white">Start Background IMAP Listener</button>
+
+
 
             </Shell>
             <Shell className="rounded-[2rem] p-5">
               <div className="flex items-center justify-between gap-3"><div><p className="section-kicker">Gmail OAuth</p><h2 className="mt-2 text-xl font-semibold">History scrape lane</h2></div><Badge tone={data?.connectors.gmail?.syncState === "ready" ? "emerald" : "amber"}>{data?.connectors.gmail?.syncState || "needed"}</Badge></div>
               <p className="mt-3 text-sm leading-6 text-white/50">Stores only secret refs, then imports history records into the local vault/index path.</p>
-              <div className="mt-4 grid gap-2"><button onClick={() => connect("gmail-oauth", { clientIdRef: "GOOGLE_CLIENT_ID", tokenRef: "GOOGLE_REFRESH_TOKEN" })} className="rounded-2xl bg-white px-4 py-3 font-semibold text-black">Connect OAuth refs</button><button onClick={() => connect("gmail-scrape", { limit: 5 })} className="rounded-2xl border border-white/12 bg-white/[0.05] px-4 py-3 font-semibold text-white">Scrape Gmail history</button></div>
+              <div className="mt-4 grid gap-2"><button onClick={() => connect("gmail-oauth", { clientIdRef: "GOOGLE_CLIENT_ID", tokenRef: "GOOGLE_REFRESH_TOKEN" })} className="rounded-2xl bg-white px-4 py-3 font-semibold text-black">Connect OAuth refs</button><button onClick={runGmailScrape} className="rounded-2xl border border-white/12 bg-white/[0.05] px-4 py-3 font-semibold text-white">Scrape Gmail history</button></div>
               <p className="mt-3 text-xs text-white/42">Imported: {data?.connectors.gmail?.imported ?? 0} · last {time(data?.connectors.gmail?.lastScrapeAt)}</p>
             </Shell>
             <Shell className="rounded-[2rem] p-5">
               <div className="flex items-center justify-between gap-3"><div><p className="section-kicker">Local model + tools</p><h2 className="mt-2 text-xl font-semibold">AI runner</h2></div><Badge tone={data?.connectors.localModels?.length ? "emerald" : "amber"}>{data?.connectors.localModels?.[0]?.status || "needed"}</Badge></div>
               <p className="mt-3 text-sm leading-6 text-white/50">Ollama/llama.cpp model setup commands plus automation tools for draft-only mail actions.</p>
-              <div className="mt-4 grid gap-2"><button onClick={() => connect("local-model", { provider: "ollama", model: "llama3.2:3b", purpose: "watchers" })} className="rounded-2xl bg-white px-4 py-3 font-semibold text-black">Setup Ollama model</button><button onClick={() => connect("model-downloaded", { model: data?.connectors.localModels?.[0]?.model || "local-rule-engine" })} className="rounded-2xl border border-white/12 bg-white/[0.05] px-4 py-3 font-semibold text-white">Mark model ready</button></div>
+              <div className="mt-4 grid gap-2"><button onClick={connectOllama} className="rounded-2xl bg-white px-4 py-3 font-semibold text-black">Setup Ollama model</button><button onClick={() => connect("model-downloaded", { model: data?.connectors.localModels?.[0]?.model || "local-rule-engine" })} className="rounded-2xl border border-white/12 bg-white/[0.05] px-4 py-3 font-semibold text-white">Mark model ready</button></div>
               <p className="mt-3 break-all text-xs text-white/42">{data?.connectors.localModels?.[0]?.installCommand || "No local model selected."}</p>
             </Shell>
           </div>

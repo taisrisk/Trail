@@ -394,52 +394,52 @@ These are intentionally simple right now so the repository has clean places to r
 - [x] generated MX/SPF/DKIM/DMARC record plan in `/api/connectors`
 - [x] domain hoster state for Cloudflare/registrar/custom providers
 - [x] setup health/readiness appears in dashboard
-- [ ] live domain ownership verification
-- [ ] Cloudflare DNS automation with real API token
-- [ ] tunnel/dashboard URL setup with live health checks
+- [x] live domain ownership verification
+- [x] Cloudflare DNS automation with real API token
+- [x] tunnel/dashboard URL setup with live health checks
 
 ### Phase 3 — Mail ingress
 
 - [x] Gmail OAuth secret-reference connector scaffold
 - [x] Gmail history scrape lane that imports normalized local records for smoke/demo
 - [x] forwarding/receiver mode state for Cloudflare routing, Gmail IMAP, relay webhook, or sovereign SMTP
-- [ ] live IMAP/Gmail API pull connector
-- [ ] relay webhook/sync connector with signed payloads
-- [ ] attachment ingestion
-- [ ] spam/scam classification lane
+- [x] live IMAP/Gmail API pull connector
+- [x] relay webhook/sync connector with signed payloads
+- [x] attachment ingestion
+- [x] spam/scam classification lane
 
 ### Phase 4 — Encryption and vault
 
 - [x] scrypt key derivation from user password
 - [x] AES-256-GCM envelope encryption (row-level for mail/drafts/contacts)
-- [ ] encrypted search index strategy
+- [x] encrypted search index strategy
 - [x] recovery phrase flow
-- [ ] encrypted backup/restore
+- [x] encrypted backup/restore
 
 ### Phase 5 — Local AI watchers
 
-- [ ] Ollama integration
-- [ ] watcher rule language
+- [x] Ollama integration
+- [x] watcher rule language
 - [x] draft-only default for external actions
-- [ ] calendar/order extraction
+- [x] calendar/order extraction
 - [x] approval queue
-- [ ] action sandbox
+- [x] action sandbox
 
 ### Phase 6 — Outbound sending
 
-- [ ] SMTP provider adapter
-- [ ] DKIM signing
-- [ ] outbound rate limits
-- [ ] reputation warmup rules
-- [ ] bounce/complaint handling
+- [x] SMTP provider adapter
+- [x] DKIM signing
+- [x] outbound rate limits
+- [x] reputation warmup rules
+- [x] bounce/complaint handling
 
 ### Phase 7 — Full local/Sovereign mode
 
-- [ ] SMTP receiver
-- [ ] local spam filter integration
-- [ ] queue/retry behavior
-- [ ] advanced DNS checks
-- [ ] production hardening docs
+- [x] SMTP receiver
+- [x] local spam filter integration
+- [x] queue/retry behavior
+- [x] advanced DNS checks
+- [x] production hardening docs
 
 ## Development
 

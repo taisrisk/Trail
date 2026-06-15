@@ -24,7 +24,7 @@ export async function configureCloudflareDNS(domain: string, token: string, opti
     { type: "MX", name: domain, content: receiver === "Sovereign SMTP" ? `mx.${domain}` : "route1.mx.cloudflare.net", priority: 10, proxied: false },
     { type: "TXT", name: domain, content: "v=spf1 include:_spf.google.com include:_spf.mx.cloudflare.net ~all", proxied: false },
     { type: "TXT", name: `_dmarc.${domain}`, content: `v=DMARC1; p=quarantine; rua=mailto:dmarc@${domain}`, proxied: false },
-    { type: "TXT", name: `trail._domainkey.${domain}`, content: "v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC3QK+K2YJj8+hJtE7lX0/j2q3o7rQZ4YvY5A2+QW+8YxV1tQ==", proxied: false }, // Note: Normally generated dynamically by local cert tool, hardcoded real public key for phase 1 production compatibility.
+    { type: "TXT", name: `trail._domainkey.${domain}`, content: `v=DKIM1; k=rsa; p=${process.env.TRAIL_DKIM_PUBLIC_KEY || ""}`, proxied: false },
     { type: "CNAME", name: `trail.${domain}`, content: "127-0-0-1.local-trail.invalid", proxied: false },
   ];
 

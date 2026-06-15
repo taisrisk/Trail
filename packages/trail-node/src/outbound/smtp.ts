@@ -7,17 +7,17 @@ export async function sendOutboundMail(options: { to: string; subject: string; t
   const from = state.aliases[0]?.address || `hello@${domain}`;
 
   // Retrieve SMTP credentials from environment
-  const smtpHost = process.env.TRAIL_SMTP_HOST;
-  const smtpPort = process.env.TRAIL_SMTP_PORT ? parseInt(process.env.TRAIL_SMTP_PORT, 10) : 587;
-  const smtpUser = process.env.TRAIL_SMTP_USER;
-  const smtpPass = process.env.TRAIL_SMTP_PASS;
+  const smtpHost = state.smtp?.host;
+  const smtpPort = state.smtp?.port || 587;
+  const smtpUser = state.smtp?.user;
+  const smtpPass = state.smtp?.pass;
 
   if (!smtpHost || !smtpUser || !smtpPass) {
-    throw new Error("SMTP credentials not configured in environment (TRAIL_SMTP_HOST, TRAIL_SMTP_USER, TRAIL_SMTP_PASS)");
+    throw new Error("SMTP credentials not configured in local state. Please add them via the dashboard.");
   }
 
   // Retrieve DKIM key if available
-  const dkimPrivateKey = process.env.TRAIL_DKIM_PRIVATE_KEY;
+  const dkimPrivateKey = state.smtp?.dkimPrivateKey;
 
   const transportConfig: Record<string, unknown> = {
     host: smtpHost,

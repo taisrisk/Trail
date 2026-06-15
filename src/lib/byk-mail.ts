@@ -45,7 +45,7 @@ export const mailModes: MailMode[] = [
     id: "quick-domain",
     name: "Quick Domain Mode",
     tagline: "Own the address today, keep the inbox local through a forwarding pipe.",
-    bestFor: "First-time users, normal home internet, and fast GitHub-demo onboarding.",
+    bestFor: "First-time users, normal home internet, and fast production onboarding.",
     status: "optional-cloud",
     flow: ["Domain MX", "Cloudflare Email Routing", "Hidden relay inbox / connector", "Trail Local Node", "Encrypted vault"],
     pros: ["No port 25 problem", "Fast setup", "Works with cheap domains", "Still gives user-owned identity"],

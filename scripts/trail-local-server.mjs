@@ -11,7 +11,7 @@ import {
   configureDomainReceiver,
   configureGmailConnector,
   scrapeGmailHistory,
-  configureLocalModel,
+  configureSmtpOutbound, configureLocalModel,
   markLocalModelDownloaded,
   configureTool,
   seedPlatformData,
@@ -152,6 +152,8 @@ let imapCleanup = null;
         nextState = await configureGmailConnector({ clientIdRef: body.clientIdRef, tokenRef: body.tokenRef });
       } else if (body.action === "gmail-scrape") {
         nextState = await scrapeGmailHistory({ limit: 1 });
+      } else if (body.action === "smtp-outbound") {
+        nextState = await configureSmtpOutbound({ host: body.host, port: body.port, user: body.user, pass: body.pass, dkimPrivateKey: body.dkimPrivateKey });
       } else if (body.action === "local-model" || body.action === "model-downloaded") {
         await configureLocalModel({ provider: body.provider, model: body.model, purpose: body.purpose });
         if (body.action === "model-downloaded") {

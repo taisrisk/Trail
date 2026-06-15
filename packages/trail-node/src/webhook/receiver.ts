@@ -22,11 +22,10 @@ export async function verifyAndProcessWebhook(reqStream: IncomingMessage, signat
   const state = await readTrailState();
 
   // The secret reference should match what is stored in state.receiver.inboundSecretRef
-  const secretRef = state.receiver?.inboundSecretRef || "TRAIL_INBOUND_SECRET";
-  const secret = process.env[secretRef];
+  const secret = state.receiver?.inboundSecret;
 
   if (!secret) {
-    throw new Error(`Inbound webhook secret not configured in environment (${secretRef})`);
+    throw new Error(`Inbound webhook secret not configured in local state`);
   }
 
   // Calculate signature on the fly

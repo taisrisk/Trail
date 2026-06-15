@@ -78,7 +78,7 @@ export const ecosystemBuildPhases = [
   {
     phase: "02",
     title: "Local vault scaffold",
-    items: ["~/.erme/pass", "redacted status APIs", "demo encrypted item storage"],
+    items: ["~/.erme/pass", "redacted status APIs", "production encrypted item storage"],
   },
   {
     phase: "03",

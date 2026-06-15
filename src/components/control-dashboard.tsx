@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/primitives";
 
 type Mode = "quick-domain" | "relay-node" | "sovereign-mx";
 type RunState = "fresh" | "running" | "paused";
-type MailFolder = "inbox" | "priority" | "orders" | "finance" | "sent" | "archive";
+type MailFolder = "inbox" | "priority" | "orders" | "finance" | "sent" | "archive" | "spam";
 
 type Status = {
   nodeId: string;
@@ -25,8 +25,9 @@ type TrailEvent = { id: string; type: string; message: string; at: string };
 type ConnectorStatus = "not-started" | "configured" | "connected" | "syncing" | "ready" | "error";
 type Connectors = {
   domainHost?: { provider: string; domain: string; nameservers: string[]; records: { type: string; host: string; value: string; status: ConnectorStatus }[]; status: ConnectorStatus; updatedAt: string };
-  receiver?: { mode: string; targetAddress: string; webhookPath: string; inboundSecretRef: string; status: ConnectorStatus; updatedAt: string };
-  gmail?: { clientIdRef: string; tokenRef: string; scopes: string[]; historyId?: string; syncState: ConnectorStatus; lastScrapeAt?: string; imported: number; updatedAt: string };
+  receiver?: { mode: string; targetAddress: string; webhookPath: string; inboundSecret: string; status: ConnectorStatus; updatedAt: string };
+  gmail?: { clientId: string; clientSecret: string; refreshToken: string; scopes: string[]; historyId?: string; syncState: ConnectorStatus; lastScrapeAt?: string; imported: number; updatedAt: string };
+  smtp?: { status: ConnectorStatus };
   localModels: { id: string; provider: string; model: string; purpose: string; installCommand: string; status: ConnectorStatus; updatedAt: string; downloadedAt?: string }[];
   tools: { id: string; name: string; type: string; status: ConnectorStatus; notes: string; updatedAt: string }[];
 };
@@ -170,6 +171,7 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
   };
 
 
+
   const runGmailScrape = async () => {
     try {
       await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "gmail-scrape", limit: 50 }) });
@@ -177,6 +179,20 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
       refresh().catch((err) => setError(err instanceof Error ? err.message : String(err)));
     } catch(err) {
       alert("Gmail sync failed: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const connectGmail = async () => {
+    const clientId = window.prompt("Gmail OAuth Client ID:");
+    const clientSecret = window.prompt("Gmail OAuth Client Secret:");
+    const refreshToken = window.prompt("Gmail OAuth Refresh Token:");
+    if (!clientId || !clientSecret || !refreshToken) return;
+    try {
+      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "gmail-oauth", clientId, clientSecret, refreshToken }) });
+      alert("Gmail credentials saved locally.");
+      refresh().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    } catch(err) {
+      alert("Gmail connect failed: " + (err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -210,6 +226,24 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
       }
     } catch(err) {
       alert("IMAP IDLE network failed: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+
+  const connectSmtp = async () => {
+    const host = window.prompt("SMTP Host (e.g. smtp.sendgrid.net):");
+    const portStr = window.prompt("SMTP Port (e.g. 587):");
+    const user = window.prompt("SMTP User:");
+    const pass = window.prompt("SMTP Pass (App Password):");
+    const dkimPrivateKey = window.prompt("DKIM Private Key (Base64/PEM) [Optional]:");
+    if (!host || !user || !pass) return;
+
+    try {
+      await api("/api/connectors", { method: "POST", body: JSON.stringify({ action: "smtp-outbound", host, port: portStr ? parseInt(portStr, 10) : 587, user, pass, dkimPrivateKey: dkimPrivateKey || undefined }) });
+      alert("SMTP outbound credentials saved securely in local state.");
+      refresh().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    } catch(err) {
+      alert("SMTP config failed: " + (err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -336,9 +370,15 @@ export function ControlDashboard({ initialData = null }: { initialData?: Platfor
             <Shell className="rounded-[2rem] p-5">
               <div className="flex items-center justify-between gap-3"><div><p className="section-kicker">Gmail OAuth</p><h2 className="mt-2 text-xl font-semibold">History scrape lane</h2></div><Badge tone={data?.connectors.gmail?.syncState === "ready" ? "emerald" : "amber"}>{data?.connectors.gmail?.syncState || "needed"}</Badge></div>
               <p className="mt-3 text-sm leading-6 text-white/50">Stores only secret refs, then imports history records into the local vault/index path.</p>
-              <div className="mt-4 grid gap-2"><button onClick={() => connect("gmail-oauth", { clientIdRef: "GOOGLE_CLIENT_ID", tokenRef: "GOOGLE_REFRESH_TOKEN" })} className="rounded-2xl bg-white px-4 py-3 font-semibold text-black">Connect OAuth refs</button><button onClick={runGmailScrape} className="rounded-2xl border border-white/12 bg-white/[0.05] px-4 py-3 font-semibold text-white">Scrape Gmail history</button></div>
+              <div className="mt-4 grid gap-2"><button onClick={connectGmail} className="rounded-2xl bg-white px-4 py-3 font-semibold text-black">Connect OAuth refs</button><button onClick={runGmailScrape} className="rounded-2xl border border-white/12 bg-white/[0.05] px-4 py-3 font-semibold text-white">Scrape Gmail history</button></div>
               <p className="mt-3 text-xs text-white/42">Imported: {data?.connectors.gmail?.imported ?? 0} · last {time(data?.connectors.gmail?.lastScrapeAt)}</p>
             </Shell>
+            <Shell className="rounded-[2rem] p-5 md:p-6">
+              <div className="flex items-center justify-between gap-3"><div><p className="section-kicker">Sender</p><h2 className="mt-2 text-xl font-semibold">Outbound SMTP</h2></div><Badge tone={data?.connectors?.smtp ? "emerald" : "amber"}>{data?.connectors?.smtp?.status || "needed"}</Badge></div>
+              <p className="mt-3 text-sm leading-6 text-white/50">Used for sending outgoing email via third-party mailer (SendGrid, Mailgun, Amazon SES).</p>
+              <button onClick={connectSmtp} className="mt-4 w-full rounded-2xl bg-white px-4 py-3 font-semibold text-black">Configure SMTP Outbound</button>
+            </Shell>
+
             <Shell className="rounded-[2rem] p-5">
               <div className="flex items-center justify-between gap-3"><div><p className="section-kicker">Local model + tools</p><h2 className="mt-2 text-xl font-semibold">AI runner</h2></div><Badge tone={data?.connectors.localModels?.length ? "emerald" : "amber"}>{data?.connectors.localModels?.[0]?.status || "needed"}</Badge></div>
               <p className="mt-3 text-sm leading-6 text-white/50">Ollama/llama.cpp model setup commands plus automation tools for draft-only mail actions.</p>

@@ -69,17 +69,7 @@ export function PassDashboard({
 
   const byKind = useMemo(() => Object.entries(status?.counts.byKind || {}), [status]);
 
-  async function seedVault() {
-    setBusy(true);
-    try {
-      await fetch("/api/pass/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seed: true }) });
-      await refresh();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function addItem() {
+async function addItem() {
     setBusy(true);
     try {
       await fetch("/api/pass/items", {
@@ -110,7 +100,7 @@ export function PassDashboard({
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white md:text-5xl">pass.erme.onl is the password manager.</h2>
           <p className="mt-4 max-w-3xl text-base leading-7 text-slate-300">This is now wired to local Erme Pass storage and APIs. API responses return redacted metadata only — not decrypted passwords.</p>
         </div>
-        <button onClick={seedVault} disabled={busy} className="rounded-full bg-violet-200 px-5 py-3 font-semibold text-slate-950 disabled:opacity-60">Seed demo vault</button>
+
       </div>
 
       <div className="grid gap-4 lg:grid-cols-4">
@@ -164,7 +154,7 @@ export function PassDashboard({
             <Badge tone="cyan">redacted list</Badge>
           </div>
           <div className="mt-4 max-h-[30rem] space-y-3 overflow-auto pr-1">
-            {items.length === 0 ? <p className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-400">No vault items yet. Seed the demo vault or add one.</p> : items.map((item) => (
+            {items.length === 0 ? <p className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-400">No vault items yet. Add a new vault item.</p> : items.map((item) => (
               <div key={item.id} className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>

@@ -27,3 +27,5 @@ export { processMailWithOllama } from "./watchers/ai";
 export { sendOutboundMail } from "./outbound/smtp";
 export { startSovereignSMTPServer } from "./inbound/smtp-server";
 export { startDisposableTunnel } from "./dns/trycloudflare";
+export { notifyDesktop } from "./outbound/notify";
+export { configureSmtpOutbound } from "./store";

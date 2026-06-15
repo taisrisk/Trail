@@ -1,26 +1,36 @@
-import { MailRecord } from "../store";
+import { readTrailState, MailRecord } from "../store";
 
 export async function processMailWithOllama(mail: MailRecord, rules: string[]) {
-  // Production LLM execution: Send mail text and rules to the local Ollama instance running on standard port 11434
-
   const endpoint = "http://localhost:11434/api/generate";
-  const prompt = `You are Trail, an automated local AI watcher that manages incoming email.
-Read the following email and determine if it matches any of these rules:
+  const prompt = `Read the following email and determine if it matches any of these user-defined rules. Also calculate a spam score (0-10, where 10 is obvious spam/phishing) and an importance score (0-10, where 10 is highly urgent or a direct request from a boss/VIP).
+
 Rules: ${rules.join("; ")}
 
 Email from: ${mail.from}
 Email subject: ${mail.subject}
 Email body: ${mail.body}
 
-If the email matches a rule, respond with a JSON object containing {"action": "<action>", "reason": "<reason>", "match": true}. Valid actions: flag, label, draft_reply, order_update.
-If it does not match, respond with {"match": false}. Do not include markdown formatting or reasoning outside the JSON block.`;
+Respond strictly with a valid JSON object matching this schema exactly:
+{
+  "match": boolean, // true if it matches a rule
+  "action": "flag" | "label" | "draft_reply" | "order_update" | null,
+  "reason": "string explaining the match or null",
+  "spamScore": number,
+  "importanceScore": number,
+  "notifyUser": "string containing a short desktop notification message to show the user if importance is high or a specific task was triggered, or null"
+}`;
 
   try {
+
+    const state = await readTrailState();
+    const activeModelRecord = state.localModels.find(m => m.purpose === "watchers" && m.provider === "ollama");
+    const activeModel = activeModelRecord ? activeModelRecord.model : "trail-watcher";
+
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "llama3.2:3b", // Requires this model to be downloaded via Ollama
+        model: activeModel,
         prompt,
         stream: false,
         format: "json"

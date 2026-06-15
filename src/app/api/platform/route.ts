@@ -6,7 +6,7 @@ import {
   readTrailState,
   resolveAction,
   searchTrailState,
-  seedPlatformData,
+
   updateMail,
   type ActionStatus,
   type MailFolder,
@@ -32,10 +32,7 @@ export async function POST(request: Request) {
     }>(request);
     const payload = body.payload || {};
 
-    if (body.action === "seed-platform") {
-      const state = await seedPlatformData();
-      return ok(platformSummary(state), { status: 201 });
-    }
+
 
     if (body.action === "create-mail") {
       const state = await createMail({

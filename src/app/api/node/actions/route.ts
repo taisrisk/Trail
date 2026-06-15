@@ -1,13 +1,10 @@
 import { fail, ok, readJson } from "@/lib/server/api";
-import { publicStatus, readTrailState, seedPlatformData, setRunState, type NodeRunState } from "@/lib/server/trail-store";
+import { publicStatus, readTrailState, setRunState, type NodeRunState } from "@/lib/server/trail-store";
 
 export async function POST(request: Request) {
   try {
     const body = await readJson<{ action: "start" | "pause" | "seed" | "reset-fresh" }>(request);
-    if (body.action === "seed") {
-      const state = await seedPlatformData();
-      return ok({ status: publicStatus(state), events: state.events.slice(0, 12) });
-    }
+
     const nextState: NodeRunState = body.action === "pause" ? "paused" : body.action === "reset-fresh" ? "fresh" : "running";
     const state = await setRunState(nextState);
     return ok({ status: publicStatus(state), events: state.events.slice(0, 12) });

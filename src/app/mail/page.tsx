@@ -1,5 +1,5 @@
 import { TrailWorkspace } from "@/components/trail-workspace";
-import { platformSummary, readTrailState, seedPlatformData } from "@/lib/server/trail-store";
+import { platformSummary, readTrailState } from "@/lib/server/trail-store";
 
 export const metadata = {
   title: "Trail Mail",
@@ -9,9 +9,6 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function MailPage() {
-  let state = await readTrailState();
-  if (state.mail.length === 0 || state.watchers.length === 0 || state.aliases.length === 0) {
-    state = await seedPlatformData();
-  }
+  const state = await readTrailState();
   return <TrailWorkspace initialData={platformSummary(state)} />;
 }
